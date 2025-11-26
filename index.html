@@ -1,507 +1,536 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Mini Geometry Dash (HTML + JS)</title>
+<title>Geometry Dash — Upgraded Preview</title>
 <style>
-  :root{
-    --bg: #0f1724;
-    --ground: #111827;
-    --accent: #06b6d4;
-    --danger: #ef4444;
-    --cube: #fcd34d;
-    --panel: rgba(255,255,255,0.06);
-    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-  }
-
-  html,body{
-    height:100%;
-    margin:0;
-    background: linear-gradient(180deg, var(--bg) 0%, #07102a 100%);
-    color: #e6eef6;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  #gameWrap{
-    display:flex;
-    gap:16px;
-    align-items:flex-start;
-    justify-content:center;
-    padding:20px;
-    box-sizing:border-box;
-  }
-
-  canvas{
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-    border-radius:10px;
-    box-shadow: 0 10px 30px rgba(2,6,23,0.7), inset 0 1px 0 rgba(255,255,255,0.02);
-    touch-action: none;
-  }
-
-  /* HUD / panels */
-  .panel{
-    width:320px;
-    max-width:40vw;
-    background:var(--panel);
-    padding:14px;
-    border-radius:10px;
-    backdrop-filter: blur(6px);
-    box-shadow: 0 6px 18px rgba(2,6,23,0.6);
-  }
-
-  .panel h1{
-    margin:0 0 8px 0;
-    font-size:18px;
-    letter-spacing:0.6px;
-  }
-
-  .scoreBig{
-    display:flex;
-    align-items:center;
-    gap:12px;
-    font-weight:700;
-    font-size:28px;
-    color: #fff;
-  }
-
-  .small{
-    color: #a7b8c9;
-    font-size:13px;
-    margin-top:8px;
-  }
-
-  .buttons{
-    display:flex;
-    gap:8px;
-    margin-top:12px;
-  }
-
-  button{
-    background:transparent;
-    border:1px solid rgba(255,255,255,0.08);
-    color:inherit;
-    padding:8px 12px;
-    border-radius:8px;
-    cursor:pointer;
-    font-weight:600;
-  }
-
-  button.primary{
-    background:linear-gradient(90deg,var(--accent), #7dd3fc);
-    color:#022;
-    border: none;
-  }
-
-  .footer{
-    margin-top:14px;
-    font-size:13px;
-    color:#9fb2c8;
-  }
-
-  .stat{
-    display:flex;
-    justify-content:space-between;
-    margin-top:8px;
-    font-size:14px;
-  }
-
-  .hint{
-    margin-top:10px;
-    font-size:13px;
-    color:#89a7bf;
-  }
-
-  @media (max-width:900px){
-    #gameWrap{flex-direction:column; align-items:center;}
-    .panel{width:92%;}
-  }
+  html,body{height:100%; margin:0; background:#0b1220; font-family:Inter,system-ui,Arial;}
+  #wrap{display:flex;align-items:center;justify-content:center;height:100%;padding:18px;box-sizing:border-box;}
+  canvas{background:linear-gradient(180deg,#071225,#0b1220); border-radius:10px; box-shadow:0 12px 40px rgba(0,0,0,0.6); touch-action:none;}
+  .note{position:fixed;left:18px;bottom:18px;color:#a9c0d6;font-size:13px}
 </style>
 </head>
 <body>
-<div id="gameWrap">
-  <canvas id="game" width="900" height="450" aria-label="Geometry Dash canvas"></canvas>
-
-  <div class="panel" role="region" aria-label="Game controls and stats">
-    <h1>Mini Geometry Dash</h1>
-
-    <div class="scoreBig">
-      <div>Score: <span id="score">0</span></div>
-      <div style="opacity:0.6">|</div>
-      <div>High: <span id="high">0</span></div>
-    </div>
-
-    <div class="small">Distance: <span id="distance">0</span> m</div>
-
-    <div class="stat"><span>Speed</span><strong id="speed">1.0x</strong></div>
-    <div class="stat"><span>Obstacles</span><strong id="obsCount">0</strong></div>
-
-    <div class="buttons">
-      <button id="pauseBtn">Pause (P)</button>
-      <button id="restartBtn" class="primary">Restart (R)</button>
-    </div>
-
-    <div class="hint">Controls: Space / ↑ / W / Click / Tap to jump. P to pause. R to restart.</div>
-
-    <div class="footer">
-      <div style="margin-top:10px">Made with HTML5 Canvas — simple clone for practice.</div>
-    </div>
-  </div>
+<div id="wrap">
+  <canvas id="game" width="900" height="450" aria-label="Upgraded Geometry Dash preview"></canvas>
 </div>
+<div class="note">Space / ↑ / Click / Tap to jump • P = Pause • R = Restart</div>
 
 <script>
-/* Mini Geometry Dash clone
-  - Single-file game using canvas
-  - Jump physics, obstacles, scrolling, collision
-  - LocalStorage for high score
-  - Touch and keyboard controls
+/* Upgraded Geometry Dash Preview
+ - Far-ahead obstacle visibility (telegraphs + shadows)
+ - Multiple obstacle types: ground blocks, tall spikes, flying blocks, moving obstacles
+ - Smooth physics, speed ramp, particles, restart/pause, mobile friendly
+ - Single-file — paste into ChatGPT preview or open as index.html
 */
 
-(() => {
-  // Canvas and context
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d', { alpha: false });
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
 
-  // Responsive canvas sizing (keeps aspect ratio)
-  function fitCanvas() {
-    const maxWidth = Math.min(window.innerWidth - 48 - 340, 1000); // leave room for HUD
-    const w = Math.max(600, maxWidth);
-    const aspect = 900/450;
-    canvas.width = Math.round(w);
-    canvas.height = Math.round(w / aspect);
+let W = canvas.width, H = canvas.height;
+
+function fit() {
+  const maxW = Math.min(window.innerWidth - 36, 1200);
+  const w = Math.max(600, maxW);
+  const aspect = 900/450;
+  canvas.width = Math.round(w);
+  canvas.height = Math.round(w / aspect);
+  W = canvas.width; H = canvas.height;
+}
+fit();
+window.addEventListener('resize', fit);
+
+// Game state
+let state = {
+  playing: true,
+  paused: false,
+  gameOver: false,
+  lastTime: performance.now(),
+  speedBase: 5,           // pixels per frame base (will scale)
+  speedMult: 1.0,
+  distance: 0,
+  score: 0,
+  high: Number(localStorage.getItem('gd_high') || 0),
+  obstacles: [],
+  particles: [],
+  spawnTimer: 0,
+  spawnInterval: 1000,    // ms
+  telegraphDistance: 620, // how far ahead obstacles spawn (big!)
+  gravity: 0.7,
+  jumpVel: -13,
+  beat: 0
+};
+
+// Player
+const player = {
+  x: Math.round(W * 0.14),
+  w: Math.round(H * 0.085),
+  h: Math.round(H * 0.085),
+  y: 0,
+  vy: 0,
+  grounded: true,
+  color: '#ffd14d'
+};
+
+function resetPlayer() {
+  player.h = Math.round(H * 0.085);
+  player.w = player.h;
+  player.x = Math.round(W * 0.14);
+  player.y = H - groundH() - player.h;
+  player.vy = 0;
+  player.grounded = true;
+}
+function groundH(){ return Math.round(H * 0.12); }
+resetPlayer();
+
+// Input
+function doJump(){
+  if(state.gameOver) return;
+  if(player.grounded){
+    player.vy = state.jumpVel;
+    player.grounded = false;
+    spawnJumpParticles();
+    playBeep(400, 0.06);
+  } else {
+    // small coyote forgiveness: allow tiny extra mid-air correction (not double jump)
   }
-  fitCanvas();
-  window.addEventListener('resize', fitCanvas);
+}
+window.addEventListener('keydown', e=>{
+  if(e.repeat) return;
+  if(['Space','ArrowUp','KeyW'].includes(e.code)) { e.preventDefault(); doJump(); }
+  if(e.code === 'KeyP') togglePause();
+  if(e.code === 'KeyR') restart();
+});
+canvas.addEventListener('pointerdown', e => { doJump(); });
 
-  // HUD elements
-  const scoreEl = document.getElementById('score');
-  const highEl = document.getElementById('high');
-  const distEl = document.getElementById('distance');
-  const speedEl = document.getElementById('speed');
-  const obsEl = document.getElementById('obsCount');
-  const pauseBtn = document.getElementById('pauseBtn');
-  const restartBtn = document.getElementById('restartBtn');
+// Pause / Restart
+function togglePause(){
+  state.paused = !state.paused;
+  if(!state.paused){ state.lastTime = performance.now(); requestAnimationFrame(loop); }
+}
+function restart(){
+  state.obstacles = [];
+  state.particles = [];
+  state.spawnTimer = 0;
+  state.spawnInterval = 1000;
+  state.speedMult = 1;
+  state.distance = 0;
+  state.score = 0;
+  state.gameOver = false;
+  state.paused = false;
+  resetPlayer();
+  playBeep(200, 0.08);
+  state.lastTime = performance.now();
+  requestAnimationFrame(loop);
+}
 
-  // Game state
-  let gameState = {
-    running: true,
-    gameOver: false,
-    score: 0,
-    distance: 0,
-    speedMultiplier: 1,
-    spawnTimer: 0,
-    spawnInterval: 1200, // ms between obstacles (adjusted by speed)
-    lastTime: performance.now(),
-    obstacles: [],
-    high: Number(localStorage.getItem('gd_high') || 0),
-    paused: false
-  };
-  highEl.textContent = gameState.high;
+// Obstacles: types -> 'block' (ground), 'tall' (tall ground), 'spike', 'fly' (air), 'move' (moving horizontally)
+function spawnObstacleType() {
+  // choose types with weights
+  const r = Math.random();
+  if (r < 0.45) return 'block';
+  if (r < 0.6) return 'tall';
+  if (r < 0.78) return 'spike';
+  if (r < 0.9) return 'fly';
+  return 'move';
+}
 
-  // Visuals and constants
-  const GROUND_HEIGHT = Math.round(canvas.height * 0.12);
-  const GRAVITY = 0.0018; // px/ms^2
-  const JUMP_VELOCITY = -0.55; // px/ms
-  const CUBE_SIZE = Math.round(canvas.height * 0.08);
+function spawnObstacle() {
+  const type = spawnObstacleType();
+  const gap = randInt(40, 120); // horizontal gap (unused here but could be used to space)
+  const baseX = W + 100 + randInt(0, 200); // spawn further out for visibility
+  if(type === 'block') {
+    const size = randInt(player.w * 0.8, player.w * 1.6);
+    const h = size;
+    state.obstacles.push({
+      type:'block', x: baseX, y: H - groundH() - h, w: size, h: h
+    });
+  } else if(type === 'tall') {
+    const w = randInt(player.w * 0.8, player.w * 1.2);
+    const h = randInt(player.h * 1.6, player.h * 2.8);
+    state.obstacles.push({ type:'tall', x: baseX, y: H - groundH() - h, w:w, h:h });
+  } else if(type === 'spike') {
+    const w = randInt(player.w*0.6, player.w*1.0);
+    const h = w * 1.2;
+    state.obstacles.push({ type:'spike', x: baseX, y: H - groundH() - h, w:w, h:h });
+  } else if(type === 'fly') {
+    const w = randInt(player.w*0.8, player.w*1.2);
+    const h = randInt(player.h*0.5, player.h*0.9);
+    const y = H - groundH() - player.h - randInt(player.h*1, player.h*3) - h;
+    state.obstacles.push({ type:'fly', x: baseX, y: y, w:w, h:h, dir: Math.random()<0.5? -1:1, range: randInt(40,140), baseY: y });
+  } else if(type === 'move') {
+    const w = randInt(player.w*0.8, player.w*1.4);
+    const h = randInt(player.h*0.8, player.h*1.8);
+    const y = H - groundH() - h;
+    state.obstacles.push({ type:'move', x: baseX, y: y - randInt(0, 0), w:w, h:h, vx: -randInt(1,3) });
+  }
+}
 
-  // Player
-  const player = {
-    x: Math.round(canvas.width * 0.15),
-    y: canvas.height - GROUND_HEIGHT - CUBE_SIZE,
-    w: CUBE_SIZE,
-    h: CUBE_SIZE,
-    vy: 0,
-    grounded: true,
-    color: getComputedStyle(document.documentElement).getPropertyValue('--cube').trim() || '#fcd34d'
-  };
+// Utils
+function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+function rectsCollide(a,b){
+  return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
+}
 
-  // Input
-  let input = { jump: false };
-  function startJump() {
-    if (gameState.gameOver) return;
-    if (player.grounded) {
-      player.vy = JUMP_VELOCITY;
-      player.grounded = false;
-    }
+// Particles
+function spawnJumpParticles(){
+  for(let i=0;i<8;i++){
+    state.particles.push({
+      x: player.x + player.w*0.5 + randInt(-4,4),
+      y: player.y + player.h,
+      vx: (Math.random()-0.5)*4,
+      vy: -Math.random()*4 - 1,
+      life: randInt(40,80),
+      size: randInt(2,6),
+      col: 'rgba(255,210,80,0.9)'
+    });
+  }
+}
+function spawnCrashParticles(cx, cy){
+  for(let i=0;i<26;i++){
+    state.particles.push({
+      x: cx,
+      y: cy,
+      vx: (Math.random()-0.5)*8,
+      vy: (Math.random()-0.5)*8,
+      life: randInt(40,100),
+      size: randInt(3,7),
+      col: `rgba(255,${randInt(60,170)},${randInt(30,60)},1)`
+    });
+  }
+}
+
+// Sounds using simple oscillator (may be blocked in some sandboxes but often works)
+let audioCtx = null;
+function ensureAudio(){
+  if(audioCtx) return;
+  try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { audioCtx = null; }
+}
+function playBeep(freq, dur=0.05){
+  ensureAudio();
+  if(!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.value = freq;
+  g.gain.value = 0.0001;
+  o.connect(g); g.connect(audioCtx.destination);
+  const now = audioCtx.currentTime;
+  g.gain.linearRampToValueAtTime( dur>0?0.08:0.06, now + 0.001 );
+  o.start(now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  o.stop(now + dur + 0.02);
+}
+
+// Game over
+function setGameOver(){
+  if(state.gameOver) return;
+  state.gameOver = true;
+  state.paused = true;
+  playBeep(120, 0.18);
+  spawnCrashParticles(player.x + player.w*0.5, player.y + player.h*0.5);
+  if(state.score > state.high){
+    state.high = state.score;
+    localStorage.setItem('gd_high', String(state.high));
+  }
+}
+
+// Loop
+function loop(now) {
+  if(state.paused) return;
+  const dt = Math.min(40, now - state.lastTime);
+  state.lastTime = now;
+
+  // ramp difficulty gently over time
+  state.speedMult += dt * 0.000035;
+  const speed = (state.speedBase) * state.speedMult;
+
+  // update spawn timing: spawn farther apart as speed increases to keep fairness, but telegraphDistance helps
+  state.spawnTimer += dt;
+  const effectiveInterval = Math.max(520, state.spawnInterval / (1 + (state.speedMult - 1) * 0.8));
+  if(state.spawnTimer > effectiveInterval){
+    state.spawnTimer = 0;
+    // spawn obstacles at telegraph distance ahead
+    // We purposely create obstacles with x starting at W + telegraphDistance so player sees them early
+    // But to keep variety, we offset randomly a bit.
+    const tele = state.telegraphDistance + randInt(-60, 120);
+    spawnObstacleAtX(W + tele);
   }
 
-  // Keyboard
-  window.addEventListener('keydown', (e) => {
-    if (e.repeat) return;
-    if ([' ', 'ArrowUp', 'w', 'W'].includes(e.key)) {
-      e.preventDefault();
-      startJump();
-    } else if (e.key === 'p' || e.key === 'P') {
-      togglePause();
-    } else if (e.key === 'r' || e.key === 'R') {
-      restartGame();
+  // update obstacles
+  for(let i = state.obstacles.length - 1; i >= 0; i--){
+    const ob = state.obstacles[i];
+    // moving obstacles update
+    if(ob.type === 'move'){
+      ob.x += ob.vx;
+      if(ob.x < W*0.5) ob.vx = Math.abs(ob.vx); // bounce rightwards a bit
     }
-  });
-
-  // Mouse/touch
-  canvas.addEventListener('pointerdown', (e) => {
-    // prevent context menu-like interactions
-    e.preventDefault();
-    startJump();
-  });
-
-  // Pause and restart buttons
-  pauseBtn.addEventListener('click', togglePause);
-  restartBtn.addEventListener('click', restartGame);
-
-  function togglePause() {
-    gameState.paused = !gameState.paused;
-    pauseBtn.textContent = gameState.paused ? 'Resume (P)' : 'Pause (P)';
-    if (!gameState.paused) {
-      // reset lastTime so animation doesn't jump
-      gameState.lastTime = performance.now();
-      requestAnimationFrame(loop);
+    if(ob.type === 'fly'){
+      // float up and down
+      ob.baseY += 0; // keep
+      ob.y += Math.sin((state.distance + ob.x) * 0.03) * 0.6;
     }
+    // universal motion to the left based on game speed
+    ob.x -= speed * (dt / 16.6); // normalized to ~60fps
+    // cull off-screen
+    if(ob.x + ob.w < -200) state.obstacles.splice(i,1);
   }
 
-  function restartGame() {
-    // Reset state
-    gameState.score = 0;
-    gameState.distance = 0;
-    gameState.speedMultiplier = 1;
-    gameState.spawnTimer = 0;
-    gameState.spawnInterval = 1200;
-    gameState.obstacles = [];
-    gameState.gameOver = false;
-    player.x = Math.round(canvas.width * 0.15);
-    player.y = canvas.height - GROUND_HEIGHT - CUBE_SIZE;
+  // update player physics
+  player.vy += state.gravity;
+  player.y += player.vy;
+  const groundY = H - groundH() - player.h;
+  if(player.y >= groundY){
+    player.y = groundY;
     player.vy = 0;
     player.grounded = true;
-    gameState.paused = false;
-    pauseBtn.textContent = 'Pause (P)';
-    gameState.lastTime = performance.now();
-    requestAnimationFrame(loop);
+  } else {
+    player.grounded = false;
   }
 
-  // Obstacles
-  function spawnObstacle() {
-    const w = randInt(CUBE_SIZE * 0.6, CUBE_SIZE * 1.6);
-    const h = randInt(CUBE_SIZE * 0.6, CUBE_SIZE * 2.2);
-    const x = canvas.width + 20;
-    const y = canvas.height - GROUND_HEIGHT - h;
-    gameState.obstacles.push({ x, y, w, h, hit: false });
-  }
-
-  // Utility
-  function randInt(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
-
-  // Collision detection AABB
-  function collides(a, b) {
-    return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
-  }
-
-  // Game over handler
-  function setGameOver() {
-    gameState.gameOver = true;
-    gameState.paused = true;
-    pauseBtn.textContent = 'Resume (P)';
-    if (gameState.score > gameState.high) {
-      gameState.high = gameState.score;
-      localStorage.setItem('gd_high', String(gameState.high));
-      highEl.textContent = gameState.high;
+  // collisions (AABB)
+  const playerRect = { x: player.x, y: player.y, w: player.w, h: player.h };
+  for(const ob of state.obstacles){
+    // special collision tweaks for spikes (narrow peak) -- approximate with rect for fairness
+    let obRect = { x: ob.x, y: ob.y, w: ob.w, h: ob.h };
+    if(rectsCollide(playerRect, obRect)){
+      setGameOver();
     }
-    // small flash effect
-    flashScreen();
   }
 
-  function flashScreen() {
-    const orig = ctx.fillStyle;
-    ctx.fillStyle = 'rgba(255,60,60,0.14)';
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle = orig;
+  // update particles
+  for(let i = state.particles.length - 1; i >= 0; i--){
+    const p = state.particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.25; // gravity on particles
+    p.life--;
+    if(p.life <= 0) state.particles.splice(i,1);
   }
 
-  // Main loop
-  function loop(now) {
-    if (gameState.paused) return;
-    const dt = Math.min(40, now - gameState.lastTime); // clamp delta to avoid huge jumps
-    gameState.lastTime = now;
+  // scoring = distance (rounded)
+  state.distance += speed * (dt / 16.6);
+  const dist = Math.floor(state.distance * 0.2);
+  state.score = dist;
 
-    // increase difficulty gradually
-    gameState.speedMultiplier += dt * 0.00008; // speed up slowly
-    const speed = 0.45 * gameState.speedMultiplier; // base speed px/ms
+  render();
 
-    // update spawn interval slightly with speed
-    gameState.spawnInterval = 1200 / (1 + (gameState.speedMultiplier - 1) * 0.9);
+  // continue
+  if(!state.paused) requestAnimationFrame(loop);
+}
 
-    // move obstacles
-    for (let i = gameState.obstacles.length - 1; i >= 0; i--) {
-      const ob = gameState.obstacles[i];
-      ob.x -= speed * dt * 100; // convert speed to pixels per dt
-      if (ob.x + ob.w < -50) gameState.obstacles.splice(i, 1);
+// spawn at specific x (telegraphed spawning)
+function spawnObstacleAtX(startX){
+  const type = spawnObstacleType();
+  if(type === 'block') {
+    const size = randInt(player.w * 0.8, player.w * 1.6);
+    const h = size;
+    state.obstacles.push({ type:'block', x: startX + randInt(-40,40), y: H - groundH() - h, w: size, h: h });
+  } else if(type === 'tall') {
+    const w = randInt(player.w * 0.8, player.w * 1.2);
+    const h = randInt(player.h * 1.6, player.h * 2.6);
+    state.obstacles.push({ type:'tall', x: startX + randInt(-40,40), y: H - groundH() - h, w:w, h:h });
+  } else if(type === 'spike') {
+    const w = randInt(Math.round(player.w*0.5), Math.round(player.w*1.0));
+    const h = w * 1.3;
+    state.obstacles.push({ type:'spike', x: startX + randInt(-40,40), y: H - groundH() - h, w:w, h:h });
+  } else if(type === 'fly') {
+    const w = randInt(player.w*0.8, player.w*1.2);
+    const h = randInt(player.h*0.4, player.h*0.9);
+    const y = H - groundH() - player.h - randInt(player.h*1, player.h*3) - h;
+    state.obstacles.push({ type:'fly', x: startX + randInt(-40,40), y: y, w:w, h:h, baseY: y });
+  } else if(type === 'move') {
+    const w = randInt(player.w*0.9, player.w*1.6);
+    const h = randInt(player.h*0.8, player.h*1.3);
+    state.obstacles.push({ type:'move', x: startX + randInt(-40,40), y: H - groundH() - h, w:w, h:h, vx: -randInt(1,3) });
+  }
+}
+
+// Rendering
+function render(){
+  // clear
+  ctx.clearRect(0,0,W,H);
+
+  // sky gradient
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#07122a'); g.addColorStop(1,'#071225');
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+  // subtle parallax shapes (hills)
+  drawHills();
+
+  // ground
+  const gh = groundH();
+  ctx.fillStyle = '#0f1720';
+  ctx.fillRect(0, H - gh, W, gh);
+  // ground stripes
+  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  for(let i = 0; i < W; i += 28) ctx.fillRect(i + ((state.distance|0)%28), H - gh, 18, 2);
+
+  // telegraph markers and shadows (show obstacles far ahead)
+  for(const ob of state.obstacles){
+    // drop faint shadow/current indicator
+    const shadowX = ob.x - (state.speedBase * state.speedMult) * 12 / 2; // approximate travel to reach player
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.fillRect(Math.round(ob.x), Math.round(ob.y + ob.h + 6), Math.round(ob.w), 6);
+
+    // telegraph: small marker line at top to show far-ahead obstacle (only if far enough)
+    if(ob.x > W - state.telegraphDistance + 40){
+      const tx = Math.round(ob.x - (W - 140)); // map to near-left indicator region
+      // draw indicator above horizon
+      ctx.fillStyle = 'rgba(255,80,80,0.08)';
+      ctx.fillRect(ob.x - 2, Math.round(ob.y - 28), 4, 18);
     }
+  }
 
-    // spawn logic
-    gameState.spawnTimer += dt;
-    const spawnEvery = gameState.spawnInterval;
-    if (gameState.spawnTimer > spawnEvery) {
-      gameState.spawnTimer = 0;
-      spawnObstacle();
-    }
-
-    // update player physics
-    player.vy += GRAVITY * dt;
-    player.y += player.vy * dt * 100; // scale vy to pixels per dt
-
-    // ground collision
-    const groundY = canvas.height - GROUND_HEIGHT - player.h;
-    if (player.y >= groundY) {
-      player.y = groundY;
-      player.vy = 0;
-      player.grounded = true;
+  // draw obstacles (main)
+  for(const ob of state.obstacles){
+    if(ob.type === 'spike'){
+      drawSpike(ob);
     } else {
-      player.grounded = false;
-    }
-
-    // collisions
-    const playerRect = { x: player.x, y: player.y, w: player.w, h: player.h };
-    for (const ob of gameState.obstacles) {
-      if (collides(playerRect, ob)) {
-        setGameOver();
-      }
-    }
-
-    // scoring: distance is basically integrated speed
-    gameState.distance += speed * dt * 0.08;
-    const dist = Math.floor(gameState.distance);
-    gameState.score = dist;
-    scoreEl.textContent = gameState.score;
-    distEl.textContent = dist;
-    speedEl.textContent = gameState.speedMultiplier.toFixed(2) + 'x';
-    obsEl.textContent = gameState.obstacles.length;
-
-    // draw frame
-    render();
-
-    // continue
-    if (!gameState.paused) requestAnimationFrame(loop);
-  }
-
-  // Rendering
-  function render() {
-    // background
-    ctx.fillStyle = '#081425';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // some parallax hills for depth
-    drawParallax();
-
-    // ground
-    const gh = GROUND_HEIGHT;
-    // top of ground
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim() || '#111827';
-    ctx.fillRect(0, canvas.height - gh, canvas.width, gh);
-
-    // ground pattern
-    ctx.fillStyle = 'rgba(255,255,255,0.02)';
-    for (let i = 0; i < canvas.width; i += 30) {
-      ctx.fillRect(i, canvas.height - gh, 20, 2);
-    }
-
-    // obstacles
-    for (const ob of gameState.obstacles) {
-      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#ef4444';
+      // shape
+      ctx.fillStyle = '#ef4444';
       ctx.fillRect(Math.round(ob.x), Math.round(ob.y), Math.round(ob.w), Math.round(ob.h));
-      // small highlight
+      // highlight
       ctx.fillStyle = 'rgba(255,255,255,0.06)';
       ctx.fillRect(Math.round(ob.x + ob.w - Math.min(12, ob.w)), Math.round(ob.y), Math.min(12, ob.w), Math.round(ob.h));
     }
+  }
 
-    // player (cube)
-    ctx.save();
-    // slight rotation based on vertical velocity for flair
-    const rot = Math.max(-0.15, Math.min(0.15, player.vy * 0.8));
-    ctx.translate(player.x + player.w/2, player.y + player.h/2);
-    ctx.rotate(rot);
-    ctx.fillStyle = player.color;
-    ctx.fillRect(-player.w/2, -player.h/2, player.w, player.h);
-    // face (simple)
-    ctx.fillStyle = '#222';
-    ctx.fillRect(-player.w*0.24, -player.h*0.08, player.w*0.18, player.h*0.16);
-    ctx.fillRect(player.w*0.06 - player.w/2, -player.h*0.08, player.w*0.18, player.h*0.16);
-    ctx.restore();
+  // player
+  ctx.save();
+  const rot = Math.max(-0.15, Math.min(0.15, player.vy * 0.02));
+  ctx.translate(player.x + player.w/2, player.y + player.h/2);
+  ctx.rotate(rot);
+  ctx.fillStyle = player.color;
+  roundRect(ctx, -player.w/2, -player.h/2, player.w, player.h, 6, true, false);
+  // face
+  ctx.fillStyle = '#222';
+  ctx.fillRect(-player.w*0.24, -player.h*0.08, player.w*0.18, player.h*0.16);
+  ctx.fillRect(player.w*0.06 - player.w/2, -player.h*0.08, player.w*0.18, player.h*0.16);
+  ctx.restore();
 
-    // top-left HUD overlay on canvas
-    ctx.fillStyle = 'rgba(0,0,0,0.16)';
-    ctx.fillRect(14, 14, 220, 46);
+  // particles
+  for(const p of state.particles){
+    ctx.fillStyle = p.col;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  }
+
+  // HUD
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(12,12,220,58);
+  ctx.fillStyle = '#fff';
+  ctx.font = `700 ${14 + Math.round(W*0.008)}px system-ui, Arial`;
+  ctx.fillText(`Score: ${state.score}`, 24, 36);
+  ctx.font = `${12 + Math.round(W*0.006)}px system-ui, Arial`;
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillText(`High: ${state.high}`, 24, 56);
+
+  // game over overlay
+  if(state.gameOver){
+    ctx.fillStyle = 'rgba(2,6,12,0.6)';
+    ctx.fillRect(0,0,W,H);
     ctx.fillStyle = '#fff';
-    ctx.font = `600 ${14 + Math.round(canvas.width * 0.008)}px system-ui, Arial`;
-    ctx.fillText(`Score: ${gameState.score}`, 24, 36);
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.font = `500 ${12 + Math.round(canvas.width * 0.006)}px system-ui, Arial`;
-    ctx.fillText(`High: ${gameState.high}`, 24, 54);
-
-    // if game over overlay
-    if (gameState.gameOver) {
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = '#fff';
-      ctx.textAlign = 'center';
-      ctx.font = `700 ${28 + Math.round(canvas.width * 0.01)}px system-ui, Arial`;
-      ctx.fillText('You Crashed', canvas.width/2, canvas.height/2 - 10);
-
-      ctx.font = `600 ${16 + Math.round(canvas.width * 0.006)}px system-ui, Arial`;
-      ctx.fillStyle = '#d9eefa';
-      ctx.fillText(`Score: ${gameState.score}  •  High: ${gameState.high}`, canvas.width/2, canvas.height/2 + 28);
-
-      ctx.font = `500 ${14 + Math.round(canvas.width * 0.005)}px system-ui, Arial`;
-      ctx.fillStyle = '#9fb2c8';
-      ctx.fillText('Press R to restart', canvas.width/2, canvas.height/2 + 64);
-      ctx.textAlign = 'start';
-    }
+    ctx.textAlign = 'center';
+    ctx.font = `800 ${36 + Math.round(W*0.01)}px system-ui, Arial`;
+    ctx.fillText('You Crashed', W/2, H/2 - 8);
+    ctx.font = `600 ${16 + Math.round(W*0.006)}px system-ui, Arial`;
+    ctx.fillStyle = '#d7eef9';
+    ctx.fillText(`Score: ${state.score}  •  High: ${state.high}`, W/2, H/2 + 30);
+    ctx.font = `500 ${14 + Math.round(W*0.005)}px system-ui, Arial`;
+    ctx.fillStyle = '#9fb2c8';
+    ctx.fillText('Press R to restart', W/2, H/2 + 66);
+    ctx.textAlign = 'start';
   }
+}
 
-  // Parallax background (simple)
-  function drawParallax(){
-    // sky stripe
-    const w = canvas.width, h = canvas.height;
-    // distant mountains
-    const baseY = h - GROUND_HEIGHT - 60;
-    ctx.fillStyle = 'rgba(6,182,212,0.06)';
-    ctx.beginPath();
-    ctx.moveTo(0, baseY+40);
-    for (let i=0;i<w;i+=60){
-      const peak = baseY - (Math.sin((i/80)+gameState.distance*0.01) * (12 + (gameState.speedMultiplier*3)));
-      ctx.lineTo(i, peak + (i%120===0?20:0));
-    }
-    ctx.lineTo(w, baseY+40);
-    ctx.closePath();
-    ctx.fill();
-
-    // moving grid lines (gives illusion of forward motion)
-    ctx.strokeStyle = 'rgba(255,255,255,0.02)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const speed = 0.45 * gameState.speedMultiplier * 30;
-    for (let x = -((gameState.distance * 0.6) % 40); x < w; x += 40) {
-      ctx.moveTo(x, h - GROUND_HEIGHT - 4);
-      ctx.lineTo(x, h - GROUND_HEIGHT - 40);
-    }
-    ctx.stroke();
+// helpers
+function drawSpike(ob){
+  const x = Math.round(ob.x), y = Math.round(ob.y), w = Math.round(ob.w), h = Math.round(ob.h);
+  ctx.fillStyle = '#ef4444';
+  // draw base rectangle
+  ctx.fillRect(x, y + h*0.72, w, h*0.28);
+  // draw triangle spikes
+  ctx.fillStyle = '#ef4444';
+  const spikes = Math.max(2, Math.floor(w / 8));
+  const sW = w / spikes;
+  ctx.beginPath();
+  for(let i=0;i<spikes;i++){
+    const sx = x + i * sW;
+    ctx.moveTo(sx, y + h*0.72);
+    ctx.lineTo(sx + sW*0.5, y);
+    ctx.lineTo(sx + sW, y + h*0.72);
   }
+  ctx.closePath();
+  ctx.fill();
+}
 
-  // Start initial obstacles (a couple for immediate gameplay)
-  for (let i = 0; i < 2; i++) spawnObstacle();
+function drawHills(){
+  const baseY = H - groundH() - 40;
+  ctx.fillStyle = 'rgba(6,182,212,0.04)';
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  for(let i=0;i<=W;i+=60){
+    const peak = baseY - Math.sin((i/150) + (state.distance*0.01)) * 18;
+    ctx.lineTo(i, peak);
+  }
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fill();
+}
 
-  // Kick off
-  gameState.lastTime = performance.now();
-  requestAnimationFrame(loop);
+// rounded rect helper
+function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+  if (typeof r === 'undefined') r = 5;
+  if (typeof r === 'number') r = {tl: r, tr: r, br: r, bl: r};
+  ctx.beginPath();
+  ctx.moveTo(x + r.tl, y);
+  ctx.lineTo(x + w - r.tr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+  ctx.lineTo(x + w, y + h - r.br);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+  ctx.lineTo(x + r.bl, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+  ctx.lineTo(x, y + r.tl);
+  ctx.quadraticCurveTo(x, y, x + r.tl, y);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
 
-  // expose a tiny debug on double-click: skip forward speed
-  canvas.addEventListener('dblclick', () => {
-    gameState.speedMultiplier += 0.5;
-  });
+// collision & debug: show telegraph lines (optional)
+// start loop
+state.lastTime = performance.now();
+requestAnimationFrame(loop);
 
-  // Accessibility: show text high score on load
-  highEl.textContent = gameState.high;
+// small UX: if user touches canvas while paused (after crash) restart
+canvas.addEventListener('pointerup', ()=>{
+  if(state.gameOver) restart();
+});
 
-})();
+// expose one-time resume audio on first user gesture (some browsers need it)
+function unlockAudioOnce(){
+  ensureAudio();
+  if(!audioCtx) return;
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  window.removeEventListener('pointerdown', unlockAudioOnce);
+}
+window.addEventListener('pointerdown', unlockAudioOnce);
+
+// utility beep on spawn to subtly indicate upcoming obstacle (optional subtle click)
+setInterval(()=> {
+  if(state.paused || state.gameOver) return;
+  // small rhythmic tick based on distance
+  state.beat = (state.beat + 1) % 8;
+  if(state.beat % 4 === 0) playBeep(600 + Math.random()*120, 0.02);
+}, 900);
+
+// convenience: increase speed slightly on double-click for fun
+canvas.addEventListener('dblclick', ()=>{ state.speedMult += 0.4; playBeep(800,0.06); });
+
+// On first load show high score in console
+console.log('High score:', state.high);
 </script>
 </body>
 </html>
