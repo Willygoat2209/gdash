@@ -1,227 +1,972 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Geometry Dash Custom</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Geometry Dash — Ultimate Upgrade</title>
 <style>
-    body { margin:0; overflow:hidden; background:#000; font-family:Arial, sans-serif; }
-    canvas { display:block; background:black; }
-    #menu {
-        position:absolute; inset:0;
-        display:flex; flex-direction:column;
-        justify-content:center; align-items:center;
-        background:linear-gradient(135deg,#0ff,#80f,#f0f);
-        color:white; text-align:center;
-    }
-    .btn {
-        background:white; color:#000; padding:15px 30px;
-        margin:12px; border-radius:10px;
-        cursor:pointer; font-size:24px;
-        font-weight:bold; transition:0.2s;
-    }
-    .btn:hover { transform:scale(1.1); }
-    h1 { font-size:60px; margin-bottom:20px; }
+  :root{
+    --panel: rgba(255,255,255,0.06);
+    --glass: rgba(255,255,255,0.03);
+  }
+  html,body{height:100%; margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; background:#05060a; color:#e9f5ff; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}
+  #app{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:18px; box-sizing:border-box;}
+  canvas{display:block; border-radius:12px; box-shadow:0 20px 60px rgba(2,6,23,0.75); background:transparent; touch-action:none;}
+  /* UI panel */
+  .ui {
+    position: fixed;
+    right: 18px;
+    top: 18px;
+    width: 320px;
+    max-width: 36vw;
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 14px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 6px 20px rgba(2,6,23,0.6);
+  }
+  .ui h1{margin:0 0 8px 0; font-size:18px}
+  .row{display:flex; gap:8px; align-items:center; margin:8px 0}
+  .btn{flex:1; padding:10px 12px; border-radius:8px; border:0; cursor:pointer; font-weight:700; font-size:13px}
+  .btn.ghost{background:transparent; border:1px solid rgba(255,255,255,0.06); color:inherit}
+  .btn.primary{background:linear-gradient(90deg,#00d4ff,#7dd3fc); color:#06222b}
+  .small{font-size:13px;color:#b8d8ea}
+  .muted{color:#9fb2c8;font-size:13px}
+  .levelCard{display:flex; gap:8px; padding:10px; border-radius:10px; cursor:pointer; align-items:center;}
+  .levelCard.selected{box-shadow:inset 0 0 0 2px rgba(255,255,255,0.05)}
+  .levelPreview{width:56px;height:36px;border-radius:6px;background:linear-gradient(90deg,#111,#333); flex:0 0 56px}
+  footer{position:fixed; left:18px; bottom:18px; color:#9fb2c8; font-size:12px}
+  @media (max-width:900px){
+    .ui{position:static; width:92%; margin-top:12px}
+  }
 </style>
 </head>
 <body>
+<div id="app">
+  <canvas id="game" width="1100" height="620" aria-label="Geometry Dash Ultimate"></canvas>
 
-<div id="menu">
-    <h1>GEOMETRY DASH</h1>
-    <div class="btn" onclick="startLevel(1)">Level 1 — Neon Run</div>
-    <div class="btn" onclick="startLevel(2)">Level 2 — Cosmic Chaos</div>
-    <div class="btn" onclick="startLevel(3)">Level 3 — Rainbow Rush</div>
+  <div class="ui" role="region" aria-label="Game menu and controls">
+    <h1>Geometry Dash — Ultimate</h1>
+    <div class="small">Select level</div>
+
+    <div id="levels" style="margin-top:8px">
+      <!-- level cards inserted dynamically -->
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <button id="playBtn" class="btn primary">Play</button>
+      <button id="practiceBtn" class="btn ghost">Practice: Off</button>
+    </div>
+
+    <div class="row">
+      <button id="pauseBtn" class="btn ghost">Pause (P)</button>
+      <button id="restartBtn" class="btn ghost">Restart (R)</button>
+    </div>
+
+    <div style="margin-top:10px">
+      <div class="muted">Score: <strong id="score">0</strong> • High: <strong id="high">0</strong></div>
+      <div class="muted">Distance: <span id="dist">0</span> m • Speed: <span id="speed">1.00x</span></div>
+    </div>
+
+    <div style="margin-top:12px">
+      <label class="small">Volume</label>
+      <input id="vol" type="range" min="0" max="100" value="70" style="width:100%"/>
+    </div>
+
+    <div style="margin-top:10px" class="small">Controls: Hold Space / Hold on screen to bounce. Tap to switch practice checkpoint after crash.</div>
+  </div>
+
+  <footer>Made with HTML5 Canvas & WebAudio — no external files.</footer>
 </div>
 
-<canvas id="game" width="900" height="450"></canvas>
-
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+/* Geometry Dash — Ultimate Upgrade (single file)
+   Features:
+   - Hold-to-bounce (continuous boost while holding)
+   - Ship mode via portal
+   - 3 selectable levels with distinct palettes & obstacle sets
+   - Advanced obstacle types and telegraphed spawns
+   - Parallax background, rainbow trail, particles
+   - Practice mode + checkpoint respawn
+   - WebAudio music + SFX
+*/
 
-// Scenes
-let onMenu = true;
-let level = 1;
+/* -----------------------------
+   Config & Level Definitions
+   ----------------------------- */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d', { alpha: false });
+let W = canvas.width, H = canvas.height;
+function fitCanvas(){ // responsive-ish, preserve ratio
+  const maxW = Math.min(window.innerWidth - 48, 1400);
+  const w = Math.max(760, maxW);
+  const h = Math.round(w * 9/14);
+  canvas.width = w; canvas.height = h;
+  W = canvas.width; H = canvas.height;
+}
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
 
-// Player
-let player = { x:120, y:330, w:45, h:45, vy:0, gravity:0.75, jump:-14, holding:false };
+const LEVELS = [
+  { id:1, name:'Neon Run', palette:['#00eaff','#00ffa3','#0066ff','#00ffd2'], speed:6, spawn:900, telegraph: Math.round(W*0.7), ship:false },
+  { id:2, name:'Cosmic Chaos', palette:['#ff008c','#ff7a00','#ff00d0','#ff3560'], speed:7.6, spawn:820, telegraph: Math.round(W*0.72), ship:true },
+  { id:3, name:'Rainbow Rush', palette:['#ff3b3b','#ff9a00','#ffe400','#1aff6a','#00c6ff','#b06bff'], speed:8.6, spawn:760, telegraph: Math.round(W*0.75), ship:false }
+];
 
-// Obstacles
-let obstacles = [];
-let speed = 7;
+// UI elements
+const levelsEl = document.getElementById('levels');
+const playBtn = document.getElementById('playBtn');
+const practiceBtn = document.getElementById('practiceBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+const restartBtn = document.getElementById('restartBtn');
+const scoreEl = document.getElementById('score');
+const highEl = document.getElementById('high');
+const distEl = document.getElementById('dist');
+const speedEl = document.getElementById('speed');
+const volEl = document.getElementById('vol');
 
-// Colors for each level
-const levelColors = {
-  1: ["#00eaff","#00ffaa","#0099ff","#22ffcc"],
-  2: ["#ff008c","#ff7000","#ff00e1","#ff2f56"],
-  3: ["#ff0000","#ff8800","#ffee00","#00ff00","#00bbff","#7700ff"]
-};
+let selectedLevel = LEVELS[0].id;
+let practice = false;
+let running = false;
+let paused = false;
 
-// Spawning patterns for each level
-const levelPatterns = {
-  1: [ "spike", "double", "block" ],
-  2: [ "spike", "upsidedown", "tallblock", "double" ],
-  3: [ "spike", "double", "quad", "rainbow" ]
-};
+// populate level UI
+function renderLevelCards(){
+  levelsEl.innerHTML = '';
+  LEVELS.forEach(l=>{
+    const div = document.createElement('div');
+    div.className = 'levelCard' + (l.id===selectedLevel? ' selected':'');
+    div.style.display='flex';
+    div.onclick = ()=>{ selectedLevel = l.id; document.querySelectorAll('.levelCard').forEach(el=>el.classList.remove('selected')); div.classList.add('selected'); };
+    const p = document.createElement('div'); p.className='levelPreview';
+    p.style.background = `linear-gradient(90deg, ${l.palette[0]}, ${l.palette[Math.min(1,l.palette.length-1)]})`;
+    const meta = document.createElement('div'); meta.style.flex='1';
+    meta.innerHTML = `<div style="font-weight:700">${l.name}</div><div style="font-size:12px;color:#bcd8ec">Speed ${l.speed}</div>`;
+    div.appendChild(p); div.appendChild(meta);
+    div.style.marginTop='8px';
+    levelsEl.appendChild(div);
+  });
+}
+renderLevelCards();
 
-// Background gradient animation
-let bgShift = 0;
-
-// Start level
-function startLevel(lv) {
-  document.getElementById("menu").style.display = "none";
-  level = lv;
-  onMenu = false;
-  resetGame();
+/* -----------------------------
+   Audio - minimal WebAudio engine
+   ----------------------------- */
+let audioCtx = null;
+function ensureAudio(){ if(audioCtx) return; try{ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ audioCtx = null; } }
+function playBeep(freq, dur=0.06, amp=0.08, type='sine'){
+  ensureAudio();
+  if(!audioCtx) return;
+  const vol = Number(volEl.value)/100;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type;
+  o.frequency.value = freq;
+  g.gain.value = 0.0001;
+  o.connect(g); g.connect(audioCtx.destination);
+  const t0 = audioCtx.currentTime;
+  g.gain.linearRampToValueAtTime(amp * vol, t0 + 0.005);
+  o.start(t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.stop(t0 + dur + 0.02);
 }
 
-function resetGame() {
-  player.y = 330;
+// simple music loop (drone + percussion)
+let musicInterval = null;
+function startMusic(){
+  ensureAudio();
+  if(!audioCtx) return;
+  if(musicInterval) return;
+  // simple percussive loop using scheduled beeps; keep it light
+  let beat = 0;
+  musicInterval = setInterval(()=>{
+    if(paused || !running) return;
+    // Bass thump every 4
+    if(beat % 4 === 0) playBeep(92, 0.12, 0.04, 'sine');
+    // Hi tick
+    if(beat % 2 === 0) playBeep(880 + (Math.random()*120-60), 0.02, 0.03, 'square');
+    beat = (beat + 1) % 8;
+  }, 300);
+}
+function stopMusic(){
+  if(musicInterval){ clearInterval(musicInterval); musicInterval = null; }
+}
+
+/* -----------------------------
+   Game State
+   ----------------------------- */
+let state = {
+  obstacles: [],
+  particles: [],
+  trail: [],
+  score: 0,
+  distance: 0,
+  speedMult: 1,
+  spawnTimer: 0,
+  lastTime: performance.now(),
+  shipMode: false,
+  highScores: {}
+};
+LEVELS.forEach(l=> state.highScores[l.id] = Number(localStorage.getItem('gd_high_' + l.id) || 0));
+
+highEl.textContent = state.highScores[selectedLevel];
+
+/* -----------------------------
+   Player
+   ----------------------------- */
+const player = {
+  x: null, y: null, w: null, h: null,
+  vy: 0, grounded: true,
+  color: '#00d4ff',
+  hold: false,
+  trailTick: 0,
+  mode: 'cube' // 'cube' or 'ship'
+};
+function resetPlayer(){
+  player.h = Math.round(H * 0.095);
+  player.w = player.h;
+  player.x = Math.round(W * 0.14);
+  player.y = H - groundHeight() - player.h;
   player.vy = 0;
-  obstacles = [];
-  speed = 7 + level;
-  spawnLoop();
-  update();
+  player.grounded = true;
+  player.mode = 'cube';
+  player.trail = [];
 }
+function groundHeight(){ return Math.round(H * 0.12); }
+resetPlayer();
 
-// Jump hold = bounce
-document.addEventListener("keydown", e=>{
-  if(e.code === "Space") player.holding = true;
+/* -----------------------------
+   Input (keyboard + touch)
+   ----------------------------- */
+window.addEventListener('keydown', e=>{
+  if(e.repeat) return;
+  if(['Space','ArrowUp','KeyW'].includes(e.code)){ e.preventDefault(); player.hold = true; if(!running) startGame(); }
+  if(e.code === 'KeyP'){ togglePause(); }
+  if(e.code === 'KeyR'){ restart(); }
 });
-document.addEventListener("keyup", e=>{
-  if(e.code === "Space") player.holding = false;
+window.addEventListener('keyup', e=>{
+  if(['Space','ArrowUp','KeyW'].includes(e.code)){ player.hold = false; }
 });
+canvas.addEventListener('pointerdown', e=>{ player.hold = true; if(!running) startGame(); });
+canvas.addEventListener('pointerup', e=>{ player.hold = false; if(state.gameOver && practice) respawnToCheckpoint(); });
 
-// Create obstacles
-function spawnObstacle() {
-  let type = randomChoice(levelPatterns[level]);
-  let color = randomChoice(levelColors[level]);
+// Buttons
+playBtn.addEventListener('click', ()=>{ if(!running) startGame(); else restart(); });
+practiceBtn.addEventListener('click', ()=>{ practice = !practice; practiceBtn.textContent = 'Practice: ' + (practice?'On':'Off'); if(practice) captureCheckpoint(); });
+pauseBtn.addEventListener('click', togglePause);
+restartBtn.addEventListener('click', restart);
+volEl.addEventListener('input', ()=>{/* live volume affects next sfx */});
 
-  let obs = {
-    x: canvas.width + 50,
-    y: 330,
-    w: 50, h:50,
-    type: type,
-    color: color
-  };
-
-  if (type === "tallblock") obs.h = 120;
-  if (type === "upsidedown") obs.y = 280;
-  if (type === "quad") { obs.w = 40; obs.h = 40; obs.quad = true; }
-  
-  obstacles.push(obs);
-}
-
-function spawnLoop() {
-  if(onMenu) return;
-  spawnObstacle();
-  setTimeout(spawnLoop, 900 - level * 120);
-}
-
-// Random pick
-function randomChoice(arr){
-  return arr[Math.floor(Math.random()*arr.length)];
-}
-
-// Draw spike obstacle
-function drawSpike(o) {
-  ctx.fillStyle = o.color;
-  ctx.beginPath();
-  ctx.moveTo(o.x, o.y + o.h);
-  ctx.lineTo(o.x + o.w/2, o.y);
-  ctx.lineTo(o.x + o.w, o.y + o.h);
-  ctx.closePath();
-  ctx.fill();
-}
-
-function drawUpsideDownSpike(o) {
-  ctx.fillStyle = o.color;
-  ctx.beginPath();
-  ctx.moveTo(o.x, o.y);
-  ctx.lineTo(o.x + o.w/2, o.y + o.h);
-  ctx.lineTo(o.x + o.w, o.y);
-  ctx.closePath();
-  ctx.fill();
-}
-
-// Main update loop
-function update() {
-  if(onMenu) return;
-
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // Background gradient
-  bgShift += 0.005;
-  let col1 = levelColors[level][Math.floor(bgShift % levelColors[level].length)];
-  let col2 = levelColors[level][Math.floor((bgShift+1) % levelColors[level].length)];
-  let g = ctx.createLinearGradient(0,0,900,450);
-  g.addColorStop(0,col1);
-  g.addColorStop(1,col2);
-  ctx.fillStyle = g;
-  ctx.fillRect(0,0,900,450);
-
-  // Ground
-  ctx.fillStyle = "rgba(0,0,0,0.4)";
-  ctx.fillRect(0,380,900,80);
-
-  // Bounce jump
-  if(player.holding && player.y >= 330){
-    player.vy = player.jump;
+/* -----------------------------
+   Obstacles & Spawning
+   ----------------------------- */
+function pickObstacleType(levelId){
+  // weighted types by level for variety
+  const r = Math.random();
+  if(levelId===1){ // Neon Run: simple spikes & blocks
+    if(r < 0.46) return 'spike';
+    if(r < 0.7) return 'block';
+    if(r < 0.86) return 'doubleSpike';
+    return 'moving';
+  } else if(levelId===2){ // Cosmic Chaos: flying hazards + inverted spikes + tall blocks
+    if(r < 0.36) return 'spike';
+    if(r < 0.55) return 'fly';
+    if(r < 0.75) return 'upSpike';
+    if(r < 0.9) return 'tall';
+    return 'wave';
+  } else { // Rainbow Rush: mixed, dense
+    if(r < 0.36) return 'spike';
+    if(r < 0.56) return 'doubleSpike';
+    if(r < 0.7) return 'block';
+    if(r < 0.84) return 'wave';
+    return 'quad';
   }
+}
 
-  // Gravity
-  player.vy += player.gravity;
-  player.y += player.vy;
-
-  // Ground collision
-  if(player.y > 330){
-    player.y = 330;
-    player.vy = 0;
-  }
-
-  // Draw player (rotating cube)
-  ctx.save();
-  ctx.translate(player.x+player.w/2, player.y+player.h/2);
-  if(!player.holding) ctx.rotate(player.vy/10);
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(-player.w/2, -player.h/2, player.w, player.h);
-  ctx.restore();
-
-  // Move & draw obstacles
-  for(let o of obstacles){
-    o.x -= speed;
-
-    if(o.type==="spike") drawSpike(o);
-    else if(o.type==="upsidedown") drawUpsideDownSpike(o);
-    else if(o.type==="double"){
-      drawSpike(o);
-      ctx.save();
-      ctx.translate(0,-50);
-      drawSpike(o);
-      ctx.restore();
+function spawnObstacleAt(x, levelCfg){
+  const type = pickObstacleType(levelCfg.id);
+  const pal = levelCfg.palette;
+  const color = pal[Math.floor(Math.random()*pal.length)];
+  if(type === 'spike'){
+    const size = rand(player.w*0.8, player.w*1.4);
+    const h = Math.round(size * 1.1);
+    state.obstacles.push({type:'spike', x, y:H - groundHeight() - h, w:size, h, color});
+  } else if(type === 'doubleSpike'){
+    const size = rand(player.w*0.9, player.w*1.2);
+    const h = Math.round(size * 1.1);
+    state.obstacles.push({type:'doubleSpike', x, y:H - groundHeight() - h, w:size, h, color});
+  } else if(type === 'upSpike'){
+    const size = rand(player.w*0.8, player.w*1.4);
+    const h = Math.round(size * 1.1);
+    state.obstacles.push({type:'upSpike', x, y: H - groundHeight() - player.h - rand(player.h*1, player.h*3) - h, w:size, h, color});
+  } else if(type === 'block'){
+    const w = rand(player.w*0.9, player.w*1.6);
+    const h = rand(player.h*0.7, player.h*1.2);
+    state.obstacles.push({type:'block', x, y:H - groundHeight() - h, w,h, color});
+  } else if(type === 'tall'){
+    const w = rand(player.w*0.9, player.w*1.2);
+    const h = rand(player.h*1.5, player.h*2.6);
+    state.obstacles.push({type:'tall', x, y:H - groundHeight() - h, w,h, color});
+  } else if(type === 'fly'){
+    const w = rand(player.w*0.9, player.w*1.3);
+    const h = rand(player.h*0.5, player.h*0.9);
+    const baseY = H - groundHeight() - player.h - rand(player.h*1, player.h*3) - h;
+    state.obstacles.push({type:'fly', x, y:baseY, baseY, w,h, color, amp:rand(8,36)});
+  } else if(type === 'moving'){
+    const w = rand(player.w*0.8, player.w*1.4);
+    const h = rand(player.h*0.8, player.h*1.6);
+    state.obstacles.push({type:'moving', x, y:H - groundHeight() - h, w,h, color, vx: -rand(1,3)});
+  } else if(type === 'wave'){
+    // a cluster of many small spikes in a wave pattern
+    const count = rand(3,6);
+    const gap = Math.round(player.w*0.9);
+    for(let i=0;i<count;i++){
+      const px = x + i * (gap + rand(-6,6));
+      const s = rand(Math.round(player.w*0.65), Math.round(player.w*1.0));
+      const h = Math.round(s * 1.05);
+      state.obstacles.push({type:'spike', x:px, y:H - groundHeight() - h, w:s, h, color});
     }
-    else if(o.type==="block"||o.type==="tallblock"){
-      ctx.fillStyle = o.color;
-      ctx.fillRect(o.x,o.y,o.w,o.h);
-    }
-    else if(o.type==="quad"){
-      for(let i=0;i<4;i++){
-        ctx.fillStyle = levelColors[level][i % levelColors[level].length];
-        ctx.fillRect(o.x + (i%2)*40, o.y - Math.floor(i/2)*40, 40, 40);
+  } else if(type === 'quad'){
+    // 4-block cluster
+    const s = Math.round(player.w*0.8);
+    const spacing = 8;
+    for(let rx=0; rx<2; rx++){
+      for(let ry=0; ry<2; ry++){
+        state.obstacles.push({type:'block', x: x + rx*(s+spacing), y: H - groundHeight() - (s + ry*(s+8)), w:s, h: s, color: pal[(rx+ry) % pal.length]});
       }
     }
+  }
+}
 
-    // Collision
-    if(player.x < o.x + o.w &&
-       player.x + player.w > o.x &&
-       player.y < o.y + o.h &&
-       player.y + player.h > o.y){
-         location.reload();
-       }
+/* Telegraphed spawn: obstacles begin far ahead so player can react */
+function spawnAhead(levelCfg){
+  const base = W + levelCfg.telegraph + rand(-120, 160);
+  spawnObstacleAt(base, levelCfg);
+}
+
+/* -----------------------------
+   Collision helpers
+   ----------------------------- */
+function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+
+// point-in-triangle barycentric
+function pointInTriangle(px,py, ax,ay, bx,by, cx,cy){
+  const v0x = cx - ax, v0y = cy - ay;
+  const v1x = bx - ax, v1y = by - ay;
+  const v2x = px - ax, v2y = py - ay;
+  const dot00 = v0x*v0x + v0y*v0y;
+  const dot01 = v0x*v1x + v0y*v1y;
+  const dot02 = v0x*v2x + v0y*v2y;
+  const dot11 = v1x*v1x + v1y*v1y;
+  const dot12 = v1x*v2x + v1y*v2y;
+  const invDen = 1 / (dot00 * dot11 - dot01 * dot01);
+  const u = (dot11 * dot02 - dot01 * dot12) * invDen;
+  const v = (dot00 * dot12 - dot01 * dot02) * invDen;
+  return (u >= 0) && (v >= 0) && (u + v < 1);
+}
+
+// rectangle-triangle overlap (approx)
+function rectIntersectsTriangle(rx,ry,rw,rh, ax,ay,bx,by,cx,cy){
+  // rect corners in triangle?
+  const corners = [[rx,ry],[rx+rw,ry],[rx,ry+rh],[rx+rw,ry+rh]];
+  for(const c of corners) if(pointInTriangle(c[0],c[1], ax,ay,bx,by,cx,cy)) return true;
+  // triangle points in rect?
+  if((ax>=rx&&ax<=rx+rw&&ay>=ry&&ay<=ry+rh) || (bx>=rx&&bx<=rx+rw&&by>=ry&&by<=ry+rh) || (cx>=rx&&cx<=rx+rw&&cy>=ry&&cy<=ry+rh)) return true;
+  // sample edges
+  const edges = [[ax,ay,bx,by],[bx,by,cx,cy],[cx,cy,ax,ay]];
+  for(const e of edges){
+    const samples=6;
+    for(let i=0;i<=samples;i++){
+      const t=i/samples;
+      const sx=e[0]+(e[2]-e[0])*t;
+      const sy=e[1]+(e[3]-e[1])*t;
+      if(sx>=rx && sx<=rx+rw && sy>=ry && sy<=ry+rh) return true;
+    }
+  }
+  return false;
+}
+
+/* -----------------------------
+   Particles & Effects
+   ----------------------------- */
+function spawnJumpParticles(){
+  for(let i=0;i<10;i++){
+    state.particles.push({
+      x: player.x + player.w*0.5 + rand(-6,6),
+      y: player.y + player.h,
+      vx: (Math.random()-0.5)*4,
+      vy: -Math.random()*4 - 1,
+      life: rand(30,70),
+      size: rand(2,5),
+      col: 'rgba(255,255,255,0.9)'
+    });
+  }
+}
+function spawnLandingParticles(){
+  for(let i=0;i<10;i++){
+    state.particles.push({
+      x: player.x + player.w*0.5 + rand(-6,6),
+      y: player.y + player.h,
+      vx: (Math.random()-0.5)*6,
+      vy: -Math.random()*2,
+      life: rand(20,50),
+      size: rand(2,6),
+      col: 'rgba(0,180,255,0.95)'
+    });
+  }
+}
+function spawnCrashParticles(cx,cy){
+  for(let i=0;i<30;i++){
+    state.particles.push({
+      x: cx,
+      y: cy,
+      vx: (Math.random()-0.5)*9,
+      vy: (Math.random()-0.5)*9,
+      life: rand(40,120),
+      size: rand(3,8),
+      col: `rgba(255,${rand(60,200)},${rand(40,130)},1)`
+    });
+  }
+}
+
+/* -----------------------------
+   Gameplay: start / loop / pause / restart
+   ----------------------------- */
+let selectedCfg = LEVELS.find(l=>l.id===selectedLevel);
+
+function startGame(){
+  selectedCfg = LEVELS.find(l=>l.id===selectedLevel);
+  running = true; paused = false; state.gameOver = false;
+  state.obstacles = []; state.particles = []; state.trail = [];
+  state.score = 0; state.distance = 0; state.speedMult = 1; state.spawnTimer = 0;
+  resetPlayer();
+  if(practice) captureCheckpoint();
+  state.lastTime = performance.now();
+  startMusic();
+  requestAnimationFrame(loop);
+}
+function togglePause(){ paused = !paused; if(!paused){ state.lastTime = performance.now(); startMusic(); requestAnimationFrame(loop); } else stopMusic(); }
+function restart(){ if(practice && state.checkpointState){ respawnToCheckpoint(); } else startGame(); }
+function endGame(){
+  if(state.gameOver) return;
+  state.gameOver = true; paused = true;
+  stopMusic();
+  spawnCrashParticles(player.x + player.w*0.5, player.y + player.h*0.5);
+  playBeep(100,0.18,0.12,'sawtooth');
+  // update high
+  if(state.score > state.highScores[selectedCfg.id]){ state.highScores[selectedCfg.id] = state.score; localStorage.setItem('gd_high_' + selectedCfg.id, String(state.score)); }
+  highEl.textContent = state.highScores[selectedCfg.id];
+}
+
+/* Practice checkpoint */
+function captureCheckpoint(){
+  state.checkpointState = {
+    obstacles: JSON.parse(JSON.stringify(state.obstacles)),
+    score: state.score,
+    distance: state.distance,
+    speedMult: state.speedMult,
+  };
+}
+function respawnToCheckpoint(){
+  if(!state.checkpointState) { startGame(); return; }
+  state.obstacles = JSON.parse(JSON.stringify(state.checkpointState.obstacles));
+  state.score = state.checkpointState.score;
+  state.distance = state.checkpointState.distance;
+  state.speedMult = state.checkpointState.speedMult;
+  resetPlayer();
+  state.gameOver = false;
+  paused = false;
+  startMusic();
+  requestAnimationFrame(loop);
+}
+
+/* Loop */
+function loop(now){
+  if(paused || !running) return;
+  const dt = Math.min(40, now - state.lastTime);
+  state.lastTime = now;
+
+  // difficulty ramp
+  state.speedMult += dt * 0.00003;
+  const baseSpeed = selectedCfg.speed;
+  const speed = baseSpeed * state.speedMult;
+
+  // spawn logic (telegraphed)
+  state.spawnTimer += dt;
+  const interval = Math.max(360, selectedCfg.spawn / (1 + (state.speedMult - 1) * 0.8));
+  if(state.spawnTimer > interval){
+    state.spawnTimer = 0;
+    spawnAhead(selectedCfg);
   }
 
-  requestAnimationFrame(update);
-}
-</script>
+  // update obstacles
+  for(let i = state.obstacles.length - 1; i >= 0; i--){
+    const ob = state.obstacles[i];
+    if(ob.type === 'moving'){ ob.x += ob.vx; if(ob.x < W*0.55) ob.vx = Math.abs(ob.vx); } // bounce-ish
+    if(ob.type === 'fly'){ ob.y = ob.baseY + Math.sin((state.distance + ob.x)*0.03) * ob.amp; }
+    ob.x -= speed * (dt/16.6);
+    if(ob.x + ob.w < -200) state.obstacles.splice(i,1);
+  }
 
+  // player physics
+  if(player.mode === 'cube'){
+    // hold-to-bounce mechanic: if holding and grounded, apply jump repeatedly
+    if(player.hold && player.grounded){
+      player.vy = -13.6; // boost impulse
+      player.grounded = false;
+      spawnJumpParticles();
+      playBeep(520 + Math.random()*60, 0.04, 0.04, 'sine');
+    }
+    player.vy += 0.8; // gravity
+    player.y += player.vy;
+    const gy = H - groundHeight() - player.h;
+    if(player.y >= gy){
+      if(!player.grounded && Math.abs(player.vy) > 4) spawnLandingParticles();
+      player.y = gy; player.vy = 0; player.grounded = true;
+    }
+  } else if(player.mode === 'ship'){
+    // ship: hold to thrust upward, otherwise gravity slowly pulls
+    if(player.hold) player.vy = Math.max(player.vy - 0.6, -8);
+    else player.vy = Math.min(player.vy + 0.45, 8);
+    player.y += player.vy;
+    // clamp to bounds
+    if(player.y < 24) player.y = 24, player.vy = 0;
+    if(player.y + player.h > H - groundHeight()){ player.y = H - groundHeight() - player.h; player.vy = 0; }
+    // ship trail
+    state.trail.push({x: player.x - 8, y: player.y + player.h*0.5, life: 18});
+  }
+
+  // collision checks
+  for(const ob of state.obstacles){
+    if(ob.type === 'spike' || ob.type === 'doubleSpike' || ob.type === 'upSpike'){
+      // triangle shapes; check rect vs triangle
+      if(ob.type === 'spike'){
+        const ax = ob.x, ay = ob.y + ob.h;
+        const bx = ob.x + ob.w*0.5, by = ob.y;
+        const cx = ob.x + ob.w, cy = ob.y + ob.h;
+        if(rectIntersectsTriangle(player.x, player.y, player.w, player.h, ax,ay,bx,by,cx,cy)) endGame();
+      } else if(ob.type === 'doubleSpike'){
+        // top and bottom spikes stacking
+        const left = {x: ob.x, y: ob.y, w: ob.w*0.48, h: ob.h};
+        const right = {x: ob.x + ob.w*0.52, y: ob.y, w: ob.w*0.48, h: ob.h};
+        const a1=[left.x,left.y+left.h,left.x+left.w*0.5,left.y,left.x+left.w,left.y+left.h];
+        const a2=[right.x,right.y+right.h,right.x+right.w*0.5,right.y,right.x+right.w,right.y+right.h];
+        if(rectIntersectsTriangle(player.x, player.y, player.w, player.h, a1[0],a1[1],a1[2],a1[3],a1[4],a1[5])) endGame();
+        if(rectIntersectsTriangle(player.x, player.y, player.w, player.h, a2[0],a2[1],a2[2],a2[3],a2[4],a2[5])) endGame();
+      } else { // upSpike
+        const ax = ob.x, ay = ob.y;
+        const bx = ob.x + ob.w*0.5, by = ob.y + ob.h;
+        const cx = ob.x + ob.w, cy = ob.y;
+        if(rectIntersectsTriangle(player.x, player.y, player.w, player.h, ax,ay,bx,by,cx,cy)) endGame();
+      }
+    } else {
+      // rectangular obstacles
+      if(!(player.x + player.w <= ob.x || player.x >= ob.x + ob.w || player.y + player.h <= ob.y || player.y >= ob.y + ob.h)){
+        // if ship mode and obstacle is intended to be passable? (we keep it lethal)
+        endGame();
+      }
+    }
+  }
+
+  // trail (rainbow)
+  player.trailTick++;
+  if(player.mode === 'cube'){
+    state.trail.push({x: player.x + player.w*0.5, y: player.y + player.h*0.5, life: 22});
+  } else {
+    state.trail.push({x: player.x, y: player.y + player.h*0.5, life: 14});
+  }
+  if(state.trail.length > 120) state.trail.shift();
+
+  // particles update
+  for(let i=state.particles.length-1;i>=0;i--){
+    const p = state.particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.22; p.life--;
+    if(p.life<=0) state.particles.splice(i,1);
+  }
+
+  // trail lifetimes decrement
+  for(let i=state.trail.length-1;i>=0;i--){
+    state.trail[i].life--;
+    if(state.trail[i].life <= 0) state.trail.splice(i,1);
+  }
+
+  // update distance & score
+  state.distance += speed * (dt / 16.6);
+  state.score = Math.floor(state.distance * 0.16);
+  scoreEl.textContent = state.score;
+  distEl.textContent = Math.floor(state.distance * 0.16);
+  speedEl.textContent = state.speedMult.toFixed(2) + 'x';
+
+  // spawn portal occasionally in ship-enabled levels to toggle ship mode
+  if(selectedCfg.ship && Math.random() < 0.0009 && state.obstacles.length < 6){
+    // add portal object that toggles mode when reached
+    const px = W + selectedCfg.telegraph + 60 + rand(-40,140);
+    state.obstacles.push({type:'portal', x: px, y: H - groundHeight() - 120, w:64, h:64});
+  }
+
+  render();
+
+  if(!paused) requestAnimationFrame(loop);
+}
+
+/* -----------------------------
+   Rendering
+   ----------------------------- */
+function render(){
+  // background gradient animated
+  const pal = selectedCfg.palette;
+  const g = ctx.createLinearGradient(0,0,W,H);
+  const t = performance.now() * 0.00012;
+  const c0 = pal[Math.floor((t*2)%pal.length)];
+  const c1 = pal[Math.floor((t*2+1)%pal.length)];
+  g.addColorStop(0, c0);
+  g.addColorStop(1, c1);
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+
+  // parallax hills
+  drawHills();
+
+  // ground
+  const gh = groundHeight();
+  ctx.fillStyle = '#06111a';
+  ctx.fillRect(0, H-gh, W, gh);
+  // ground sheen
+  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  for(let i=0;i<W;i+=28) ctx.fillRect((i + (Math.floor(state.distance)%28)), H-gh, 18, 2);
+
+  // telegraph indicator for obstacles far ahead
+  for(const ob of state.obstacles){
+    if(ob.x > W - selectedCfg.telegraph + 40){
+      // thin indicator above horizon
+      ctx.fillStyle = 'rgba(0,0,0,0.08)';
+      ctx.fillRect(ob.x - 2, ob.y - 26, 4, 18);
+    }
+  }
+
+  // draw obstacles
+  for(const ob of state.obstacles){
+    if(ob.type === 'spike') drawSpike(ob);
+    else if(ob.type === 'doubleSpike') drawDoubleSpike(ob);
+    else if(ob.type === 'upSpike') drawUpSpike(ob);
+    else if(ob.type === 'block' || ob.type === 'tall') drawBlock(ob);
+    else if(ob.type === 'fly') drawFly(ob);
+    else if(ob.type === 'moving') drawBlock(ob);
+    else if(ob.type === 'portal') drawPortal(ob);
+  }
+
+  // draw trail (rainbow)
+  drawTrail();
+
+  // draw player
+  if(player.mode === 'cube'){
+    ctx.save();
+    ctx.translate(player.x + player.w/2, player.y + player.h/2);
+    const rot = Math.max(-0.25, Math.min(0.25, player.vy * 0.02));
+    ctx.rotate(rot);
+    roundRect(-player.w/2, -player.h/2, player.w, player.h, Math.round(player.w*0.12), player.color);
+    // little eyes
+    ctx.fillStyle = '#06222b';
+    ctx.fillRect(-player.w*0.22, -player.h*0.08, player.w*0.16, player.h*0.16);
+    ctx.fillRect(player.w*0.06 - player.w/2, -player.h*0.08, player.w*0.16, player.h*0.16);
+    ctx.restore();
+  } else {
+    // ship sprite: triangle
+    ctx.save();
+    ctx.translate(player.x + player.w/2, player.y + player.h/2);
+    ctx.rotate(0.0);
+    ctx.beginPath();
+    ctx.moveTo(-player.w/2, -player.h/2);
+    ctx.lineTo(player.w/2, 0);
+    ctx.lineTo(-player.w/2, player.h/2);
+    ctx.closePath();
+    ctx.fillStyle = '#ffd86b';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // particles
+  for(const p of state.particles){
+    ctx.fillStyle = p.col;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  }
+
+  // HUD overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.34)';
+  ctx.fillRect(12,12,260,64);
+  ctx.fillStyle = '#fff';
+  ctx.font = `700 ${14 + Math.round(W*0.007)}px system-ui, Arial`;
+  ctx.fillText(`Score: ${state.score}`, 24, 36);
+  ctx.font = `${12 + Math.round(W*0.005)}px system-ui, Arial`;
+  ctx.fillStyle = 'rgba(255,255,255,0.84)';
+  ctx.fillText(`High: ${state.highScores[selectedCfg.id]}`, 24, 56);
+
+  // game over overlay
+  if(state.gameOver){
+    ctx.fillStyle = 'rgba(0, 4, 8, 0.6)';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.font = `800 ${36 + Math.round(W*0.01)}px system-ui, Arial`;
+    ctx.fillText('You Crashed', W/2, H/2 - 12);
+    ctx.font = `600 ${16 + Math.round(W*0.006)}px system-ui, Arial`;
+    ctx.fillStyle = '#d7eef9';
+    ctx.fillText(`Score: ${state.score}  •  High: ${state.highScores[selectedCfg.id]}`, W/2, H/2 + 28);
+    ctx.font = `500 ${14 + Math.round(W*0.005)}px system-ui, Arial`;
+    ctx.fillStyle = '#9fb2c8';
+    ctx.fillText(practice ? 'Tap to respawn at checkpoint' : 'Press R to restart', W/2, H/2 + 66);
+    ctx.textAlign = 'start';
+  }
+}
+
+/* Draw helpers */
+function roundRect(x,y,w,h,r, fillCol){
+  ctx.fillStyle = fillCol || '#fff';
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+  ctx.fill();
+}
+function drawSpike(ob){
+  ctx.fillStyle = ob.color;
+  ctx.beginPath();
+  ctx.moveTo(ob.x, ob.y + ob.h);
+  ctx.lineTo(ob.x + ob.w*0.5, ob.y);
+  ctx.lineTo(ob.x + ob.w, ob.y + ob.h);
+  ctx.closePath();
+  ctx.fill();
+  // base shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.fillRect(Math.round(ob.x), Math.round(ob.y + ob.h + 6), Math.round(ob.w), 6);
+}
+function drawDoubleSpike(ob){
+  // left & right small spikes with spacing
+  const leftX = ob.x;
+  const rightX = ob.x + ob.w*0.56;
+  const w = ob.w*0.44; const h = ob.h;
+  drawSpike({x:leftX,y:ob.y,w,w,h: h, color: ob.color});
+  drawSpike({x:rightX,y:ob.y,w,w,h: h, color: ob.color});
+}
+function drawUpSpike(ob){
+  ctx.fillStyle = ob.color;
+  ctx.beginPath();
+  ctx.moveTo(ob.x, ob.y);
+  ctx.lineTo(ob.x + ob.w*0.5, ob.y + ob.h);
+  ctx.lineTo(ob.x + ob.w, ob.y);
+  ctx.closePath();
+  ctx.fill();
+}
+function drawBlock(ob){
+  ctx.fillStyle = ob.color;
+  ctx.fillRect(Math.round(ob.x), Math.round(ob.y), Math.round(ob.w), Math.round(ob.h));
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(Math.round(ob.x + ob.w - Math.min(14, ob.w)), Math.round(ob.y), Math.min(14, ob.w), Math.round(ob.h));
+}
+function drawFly(ob){
+  drawBlock(ob);
+  // small shadow under fly
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.fillRect(ob.x, ob.y + ob.h + 8, ob.w, 6);
+}
+function drawPortal(ob){
+  // pulsing ring
+  const t = performance.now()*0.004;
+  const r = 18 + Math.sin(t)*6;
+  ctx.save();
+  ctx.translate(ob.x + ob.w/2, ob.y + ob.h/2);
+  const grd = ctx.createRadialGradient(0,0,r*0.1, 0,0,r);
+  grd.addColorStop(0, 'rgba(255,255,255,0.9)');
+  grd.addColorStop(0.35, 'rgba(255,255,255,0.5)');
+  grd.addColorStop(1, 'rgba(255,255,255,0.02)');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(0,0, r+6, 0, Math.PI*2);
+  ctx.fill();
+  // inner portal symbol
+  ctx.fillStyle = '#06222b';
+  ctx.beginPath();
+  ctx.arc(0,0, 10, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+/* Draw hills/parallax */
+function drawHills(){
+  const baseY = H - groundHeight() - 40;
+  ctx.fillStyle = 'rgba(6,182,212,0.04)';
+  ctx.beginPath();
+  ctx.moveTo(0,H);
+  for(let i=0;i<=W;i+=70){
+    const peak = baseY - Math.sin((i/160) + (state.distance*0.01)) * 18 - 8;
+    ctx.lineTo(i, peak);
+  }
+  ctx.lineTo(W,H);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/* Rainbow trail */
+function drawTrail(){
+  // Draw fading circles along trail with hues shifting
+  for(let i=0;i<state.trail.length;i++){
+    const p = state.trail[i];
+    const alpha = Math.max(0, p.life/24);
+    const hue = ((i*7) + (performance.now()*0.02)) % 360;
+    ctx.fillStyle = `hsla(${hue},90%,60%,${alpha*0.85})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(1, p.life*0.18), 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+/* -----------------------------
+   Portal & Mode switch
+   ----------------------------- */
+function checkPortalCollisions(){
+  for(let i = state.obstacles.length - 1; i >=0; i--){
+    const ob = state.obstacles[i];
+    if(ob.type === 'portal'){
+      if(player.x + player.w > ob.x && player.x < ob.x + ob.w){
+        // toggle mode
+        state.obstacles.splice(i,1);
+        player.mode = (player.mode === 'cube') ? 'ship' : 'cube';
+        playBeep(player.mode === 'ship' ? 880 : 480, 0.08, 0.08, 'sine');
+        if(player.mode === 'ship'){
+          // lift a little to fit
+          player.y -= 40;
+          player.vy = 0;
+        } else {
+          // land on ground eventually
+        }
+        // checkpoint capture when portal entered (practice)
+        if(practice) captureCheckpoint();
+      }
+    }
+  }
+}
+
+/* -----------------------------
+   Utilities & startup seed
+   ----------------------------- */
+function seedInitialObstacles(){
+  for(let i=0;i<3;i++){
+    spawnObstacleAt(W + i*320 + 220, selectedCfg);
+  }
+}
+seedInitialObstacles();
+
+// unlock audio on first gesture
+function unlockAudioOnce(){
+  ensureAudio();
+  if(!audioCtx) return;
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  window.removeEventListener('pointerdown', unlockAudioOnce);
+}
+window.addEventListener('pointerdown', unlockAudioOnce);
+
+// simple music start/stop
+function startMusic(){ startMusicScheduler(); }
+let musicTimer = null;
+function startMusicScheduler(){
+  ensureAudio();
+  if(!audioCtx) return;
+  if(musicTimer) return;
+  // basic repeating beat
+  let beat = 0;
+  musicTimer = setInterval(()=>{
+    if(paused || !running) return;
+    if(beat % 4 === 0) playBeep(96, 0.12, 0.035, 'sine');
+    if(beat % 2 === 0) playBeep(880 + Math.random()*120-60, 0.02, 0.02, 'square');
+    beat = (beat+1) % 8;
+  }, 280);
+}
+function stopMusic(){ if(musicTimer){ clearInterval(musicTimer); musicTimer = null; } }
+
+/* -----------------------------
+   Game tick: glue
+   ----------------------------- */
+function gameTick(now){
+  if(!running || paused) return;
+  loop(now);
+  // portal collision checks after physics update
+  checkPortalCollisions();
+}
+
+/* Start UI/handlers */
+playBtn.textContent = 'Play';
+highEl.textContent = state.highScores[selectedLevel];
+volEl.value = 70;
+
+/* Kick loop by calling requestAnimationFrame from startGame */
+/* -----------------------------
+   Small helper functions
+   ----------------------------- */
+function playBeep(freq, dur=0.06, amp=0.08, type='sine'){ // alias for local beep with vol
+  ensureAudio();
+  if(!audioCtx) return;
+  const vol = Number(volEl.value)/100;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type; o.frequency.value = freq;
+  o.connect(g); g.connect(audioCtx.destination);
+  const now = audioCtx.currentTime;
+  g.gain.value = 0.0001;
+  g.gain.linearRampToValueAtTime(amp * vol, now + 0.005);
+  o.start(now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  o.stop(now + dur + 0.02);
+}
+
+/* -----------------------------
+   Start / Bind animation frame & UI updates
+   ----------------------------- */
+function uiUpdateLoop(){
+  // highlight selected level's high score
+  highEl.textContent = state.highScores[selectedLevel];
+  requestAnimationFrame(uiUpdateLoop);
+}
+uiUpdateLoop();
+
+/* Expose some debug controls (double-click to speed) */
+canvas.addEventListener('dblclick', ()=>{ state.speedMult += 0.35; playBeep(750,0.06,0.05); });
+
+/* Final: update selectedCfg when level changes and update UI highs */
+setInterval(()=>{ // watch for selected level change by UI click
+  if(selectedCfg.id !== selectedLevel){ selectedCfg = LEVELS.find(l=>l.id===selectedLevel); highEl.textContent = state.highScores[selectedLevel]; renderLevelCards(); }
+}, 200);
+
+/* Render level cards with updated selection function */
+function renderLevelCards(){
+  // recreate level cards preserving selection
+  const parent = document.getElementById('levels');
+  parent.innerHTML = '';
+  LEVELS.forEach(l=>{
+    const div = document.createElement('div');
+    div.className='levelCard' + (l.id===selectedLevel?' selected':'');
+    div.style.display='flex'; div.style.alignItems='center'; div.style.justifyContent='flex-start';
+    div.onclick = ()=>{ selectedLevel = l.id; document.querySelectorAll('.levelCard').forEach(el=>el.classList.remove('selected')); div.classList.add('selected'); selectedCfg = l; highEl.textContent = state.highScores[selectedLevel]; };
+    const preview = document.createElement('div'); preview.className='levelPreview';
+    preview.style.background = `linear-gradient(90deg, ${l.palette[0]}, ${l.palette[Math.min(1,l.palette.length-1)]})`;
+    preview.style.width='56px'; preview.style.height='36px'; preview.style.borderRadius='6px'; preview.style.flex='0 0 56px';
+    const meta = document.createElement('div'); meta.style.flex='1'; meta.style.marginLeft='10px';
+    meta.innerHTML = `<div style="font-weight:800">${l.name}</div><div style="font-size:12px;color:#bcd8ec">Base ${l.speed} • ${l.ship? 'Ship':'Cube'}</div>`;
+    div.appendChild(preview); div.appendChild(meta); parent.appendChild(div);
+  });
+}
+renderLevelCards();
+
+/* -----------------------------
+   Small safety: ensure there's a loop if user starts
+   ----------------------------- */
+// Because the loop needs to be initiated via startGame() we don't call it automatically.
+// startGame(); // Uncomment to auto-start
+
+/* -----------------------------
+   End of file
+   ----------------------------- */
+</script>
 </body>
 </html>
