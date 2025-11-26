@@ -1,600 +1,227 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Geometry Dash — Polished Clone</title>
+<meta charset="UTF-8">
+<title>Geometry Dash Custom</title>
 <style>
-  :root{
-    --bg1:#071426; --bg2:#061025; --accent:#00d4ff; --danger:#ff3b5c;
-    --ground:#0f1720; --panel: rgba(255,255,255,0.04);
-  }
-  html,body{height:100%; margin:0; font-family:Inter,system-ui,Segoe UI,Arial;}
-  #wrap{min-height:100%; display:flex; align-items:center; justify-content:center; padding:18px; box-sizing:border-box; background:linear-gradient(180deg,var(--bg1),var(--bg2));}
-  canvas{display:block; border-radius:10px; box-shadow:0 20px 60px rgba(0,0,0,0.6);}
-  .ui{
-    position:fixed; right:18px; top:18px; width:290px; max-width:38vw; background:var(--panel); padding:12px; border-radius:10px; color:#dcebf6; backdrop-filter:blur(6px);
-  }
-  .ui h2{margin:0 0 8px 0; font-size:16px;}
-  .row{display:flex; gap:8px; align-items:center; margin:6px 0;}
-  .btn{background:transparent; border:1px solid rgba(255,255,255,0.08); color:inherit; padding:8px 10px; border-radius:8px; cursor:pointer; font-weight:600;}
-  .btn.primary{background:linear-gradient(90deg,var(--accent),#7dd3fc); color:#022;}
-  .stat{font-size:13px; color:#9fb2c8}
-  .footer{font-size:12px; color:#94aecd; margin-top:8px}
-  @media (max-width:900px){ .ui{position:static;width:92%; margin-top:12px;} #wrap{padding:8px} canvas{width:100%; height:auto;} }
+    body { margin:0; overflow:hidden; background:#000; font-family:Arial, sans-serif; }
+    canvas { display:block; background:black; }
+    #menu {
+        position:absolute; inset:0;
+        display:flex; flex-direction:column;
+        justify-content:center; align-items:center;
+        background:linear-gradient(135deg,#0ff,#80f,#f0f);
+        color:white; text-align:center;
+    }
+    .btn {
+        background:white; color:#000; padding:15px 30px;
+        margin:12px; border-radius:10px;
+        cursor:pointer; font-size:24px;
+        font-weight:bold; transition:0.2s;
+    }
+    .btn:hover { transform:scale(1.1); }
+    h1 { font-size:60px; margin-bottom:20px; }
 </style>
 </head>
 <body>
-<div id="wrap">
-  <canvas id="game" width="1000" height="500" aria-label="Geometry Dash canvas"></canvas>
-  <div class="ui" role="region" aria-label="Game controls and stats">
-    <h2>Geometry Dash — Polished Clone</h2>
-    <div class="row">
-      <button id="playBtn" class="btn primary">Play</button>
-      <button id="pauseBtn" class="btn">Pause (P)</button>
-      <button id="restartBtn" class="btn">Restart (R)</button>
-      <button id="practiceBtn" class="btn">Practice: Off</button>
-    </div>
-    <div class="row stat"><div>Score: <strong id="score">0</strong></div><div style="margin-left:auto">High: <strong id="high">0</strong></div></div>
-    <div class="row stat">Distance: <span id="distance">0</span> m</div>
-    <div class="row stat">Speed: <span id="speed">1.00x</span></div>
-    <div class="footer">Controls: Space / ↑ / Click / Tap to jump • P pause • R restart • In practice mode you'll respawn at the last checkpoint.</div>
-  </div>
+
+<div id="menu">
+    <h1>GEOMETRY DASH</h1>
+    <div class="btn" onclick="startLevel(1)">Level 1 — Neon Run</div>
+    <div class="btn" onclick="startLevel(2)">Level 2 — Cosmic Chaos</div>
+    <div class="btn" onclick="startLevel(3)">Level 3 — Rainbow Rush</div>
 </div>
 
+<canvas id="game" width="900" height="450"></canvas>
+
 <script>
-/* Geometry Dash — Polished single-file implementation
-   - Spike triangles as primary obstacles
-   - Telegraphed obstacles far ahead
-   - Triangle-rectangle collision detection (point-in-triangle & rect overlap)
-   - Particles, parallax, WebAudio beeps
-   - Practice mode with checkpoints
-*/
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-// Canvas setup & responsive sizing
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d', { alpha: false });
-
-function fitCanvas(){
-  const maxW = Math.min(window.innerWidth - 360, 1400);
-  const w = Math.max(700, maxW);
-  const h = Math.round(w * 9/16);
-  canvas.width = w;
-  canvas.height = h;
-}
-fitCanvas();
-window.addEventListener('resize', fitCanvas);
-
-// UI elements
-const playBtn = document.getElementById('playBtn');
-const pauseBtn = document.getElementById('pauseBtn');
-const restartBtn = document.getElementById('restartBtn');
-const practiceBtn = document.getElementById('practiceBtn');
-const scoreEl = document.getElementById('score');
-const highEl = document.getElementById('high');
-const distEl = document.getElementById('distance');
-const speedEl = document.getElementById('speed');
-
-let state = {
-  running: false,
-  paused: false,
-  lastTime: performance.now(),
-  obstacles: [],
-  particles: [],
-  speedBase: 6,
-  speedMult: 1.0,
-  spawnTimer: 0,
-  spawnInterval: 1100,
-  telegraph: Math.round(canvas.width * 0.75), // spawn far ahead for visibility
-  gravity: 0.8,
-  jumpVel: -15,
-  distance: 0,
-  score: 0,
-  high: Number(localStorage.getItem('gd_high') || 0),
-  practice: false,
-  checkpointX: 0,
-  checkpointState: null,
-};
+// Scenes
+let onMenu = true;
+let level = 1;
 
 // Player
-const player = {
-  x: null, y: null, w: null, h: null, vy:0, grounded:true, color:'#00d4ff', rotation:0
+let player = { x:120, y:330, w:45, h:45, vy:0, gravity:0.75, jump:-14, holding:false };
+
+// Obstacles
+let obstacles = [];
+let speed = 7;
+
+// Colors for each level
+const levelColors = {
+  1: ["#00eaff","#00ffaa","#0099ff","#22ffcc"],
+  2: ["#ff008c","#ff7000","#ff00e1","#ff2f56"],
+  3: ["#ff0000","#ff8800","#ffee00","#00ff00","#00bbff","#7700ff"]
 };
-function resetPlayer(){
-  player.h = Math.round(canvas.height * 0.09);
-  player.w = player.h;
-  player.x = Math.round(canvas.width * 0.14);
-  player.y = canvas.height - groundHeight() - player.h;
+
+// Spawning patterns for each level
+const levelPatterns = {
+  1: [ "spike", "double", "block" ],
+  2: [ "spike", "upsidedown", "tallblock", "double" ],
+  3: [ "spike", "double", "quad", "rainbow" ]
+};
+
+// Background gradient animation
+let bgShift = 0;
+
+// Start level
+function startLevel(lv) {
+  document.getElementById("menu").style.display = "none";
+  level = lv;
+  onMenu = false;
+  resetGame();
+}
+
+function resetGame() {
+  player.y = 330;
   player.vy = 0;
-  player.grounded = true;
-  player.rotation = 0;
-}
-function groundHeight(){ return Math.round(canvas.height * 0.12); }
-
-resetPlayer();
-highEl.textContent = state.high;
-
-// Audio (WebAudio simple voices)
-let audioCtx = null;
-function ensureAudio(){
-  if (audioCtx) return;
-  try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ audioCtx = null; }
-}
-function beep(freq, duration=0.06, amp=0.08, type='sine'){
-  ensureAudio();
-  if(!audioCtx) return;
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  o.type = type;
-  o.frequency.value = freq;
-  o.connect(g); g.connect(audioCtx.destination);
-  const now = audioCtx.currentTime;
-  g.gain.value = 0.0001;
-  g.gain.linearRampToValueAtTime(amp, now + 0.005);
-  o.start(now);
-  g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-  o.stop(now + duration + 0.02);
+  obstacles = [];
+  speed = 7 + level;
+  spawnLoop();
+  update();
 }
 
-// Input
-function startJump(){ if(state.running && !state.paused && !state.gameOver && player.grounded){ player.vy = state.jumpVel; player.grounded=false; spawnJumpParticles(); beep(600,0.05,0.07); } }
-window.addEventListener('keydown', e=>{
-  if(e.repeat) return;
-  if(['Space','ArrowUp','KeyW'].includes(e.code)){ e.preventDefault(); startJump(); }
-  if(e.code === 'KeyP'){ togglePause(); }
-  if(e.code === 'KeyR'){ restart(); }
+// Jump hold = bounce
+document.addEventListener("keydown", e=>{
+  if(e.code === "Space") player.holding = true;
 });
-canvas.addEventListener('pointerdown', startJump);
-canvas.addEventListener('pointerup', () => { if(state.gameOver && state.practice) respawnToCheckpoint(); });
-
-// Buttons
-playBtn.addEventListener('click', ()=>{ if(!state.running) startGame(); else restart(); });
-pauseBtn.addEventListener('click', togglePause);
-restartBtn.addEventListener('click', restart);
-practiceBtn.addEventListener('click', ()=>{
-  state.practice = !state.practice;
-  practiceBtn.textContent = 'Practice: ' + (state.practice ? 'On' : 'Off');
-  if(state.practice){ captureCheckpoint(); }
+document.addEventListener("keyup", e=>{
+  if(e.code === "Space") player.holding = false;
 });
 
-// Game variables
-state.gameOver = false;
-state.lastTime = performance.now();
+// Create obstacles
+function spawnObstacle() {
+  let type = randomChoice(levelPatterns[level]);
+  let color = randomChoice(levelColors[level]);
 
-// Utilities
-function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
-
-// Level: simple procedural spawn with weighted obstacle types
-function pickObstacleType(){
-  const p = Math.random();
-  if(p < 0.45) return 'spike';   // spike triangle on ground
-  if(p < 0.65) return 'block';   // block obstacle
-  if(p < 0.8) return 'tall';     // taller block
-  return 'fly';                  // flying block
-}
-function spawnObstacleAt(x){
-  const type = pickObstacleType();
-  if(type === 'spike'){
-    const size = rand(Math.round(player.w*0.8), Math.round(player.w*1.5));
-    const h = size * 1.2;
-    state.obstacles.push({ type:'spike', x, y: canvas.height - groundHeight() - h, w: size, h });
-  } else if(type === 'block'){
-    const w = rand(Math.round(player.w*0.9), Math.round(player.w*1.6));
-    const h = rand(Math.round(player.h*0.7), Math.round(player.h*1.2));
-    state.obstacles.push({ type:'block', x, y: canvas.height - groundHeight() - h, w, h });
-  } else if(type === 'tall'){
-    const w = rand(Math.round(player.w*0.9), Math.round(player.w*1.2));
-    const h = rand(Math.round(player.h*1.6), Math.round(player.h*2.6));
-    state.obstacles.push({ type:'tall', x, y: canvas.height - groundHeight() - h, w, h });
-  } else { // fly
-    const w = rand(Math.round(player.w*0.9), Math.round(player.w*1.4));
-    const h = rand(Math.round(player.h*0.6), Math.round(player.h*1.0));
-    const y = canvas.height - groundHeight() - player.h - rand(player.h, player.h*3) - h;
-    state.obstacles.push({ type:'fly', x, y, w, h, baseY:y, amp: rand(8,40), speed: (Math.random()<0.5?1:-1) });
-  }
-}
-
-// Spawn wrapper - telegraphed far ahead with some randomness
-function spawnAhead(){
-  const base = canvas.width + state.telegraph + rand(-120, 180);
-  spawnObstacleAt(base);
-}
-
-// Particles
-function spawnJumpParticles(){
-  for(let i=0;i<8;i++){
-    state.particles.push({
-      x: player.x + player.w*0.5 + rand(-6,6),
-      y: player.y + player.h,
-      vx: (Math.random()-0.5)*4,
-      vy: -Math.random()*4 - 1,
-      life: rand(30,70),
-      size: rand(2,6),
-      col: 'rgba(0,210,255,0.9)'
-    });
-  }
-}
-function spawnCrashParticles(cx,cy){
-  for(let i=0;i<28;i++){
-    state.particles.push({
-      x: cx,
-      y: cy,
-      vx: (Math.random()-0.5)*8,
-      vy: (Math.random()-0.5)*8,
-      life: rand(40,120),
-      size: rand(3,7),
-      col: `rgba(255,${rand(60,180)},${rand(40,100)},1)`
-    });
-  }
-}
-
-// Collision helpers: point-in-triangle and rect-triangle overlap
-function pointInTriangle(px,py, ax,ay, bx,by, cx,cy){
-  // barycentric technique
-  const v0x = cx - ax, v0y = cy - ay;
-  const v1x = bx - ax, v1y = by - ay;
-  const v2x = px - ax, v2y = py - ay;
-  const dot00 = v0x*v0x + v0y*v0y;
-  const dot01 = v0x*v1x + v0y*v1y;
-  const dot02 = v0x*v2x + v0y*v2y;
-  const dot11 = v1x*v1x + v1y*v1y;
-  const dot12 = v1x*v2x + v1y*v2y;
-  const invDen = 1 / (dot00 * dot11 - dot01 * dot01);
-  const u = (dot11 * dot02 - dot01 * dot12) * invDen;
-  const v = (dot00 * dot12 - dot01 * dot02) * invDen;
-  return (u >= 0) && (v >= 0) && (u + v < 1);
-}
-
-function rectIntersectsTriangle(rx,ry,rw,rh, ax,ay,bx,by,cx,cy){
-  // 1) If any rect corner is inside triangle -> overlap
-  const corners = [
-    [rx,ry],[rx+rw,ry],[rx,ry+rh],[rx+rw,ry+rh]
-  ];
-  for(const [px,py] of corners){
-    if(pointInTriangle(px,py, ax,ay,bx,by,cx,cy)) return true;
-  }
-  // 2) If any triangle point inside rect -> overlap
-  if( (ax >= rx && ax <= rx+rw && ay >= ry && ay <= ry+rh) ||
-      (bx >= rx && bx <= rx+rw && by >= ry && by <= ry+rh) ||
-      (cx >= rx && cx <= rx+rw && cy >= ry && cy <= ry+rh) ) return true;
-  // 3) Edges intersection tests (approximate by sampling triangle edges) - quick check
-  // We'll sample along edges and test if any sample lies inside rect
-  const samples = 6;
-  const edges = [ [ax,ay,bx,by], [bx,by,cx,cy], [cx,cy,ax,ay] ];
-  for(const e of edges){
-    for(let i=0;i<=samples;i++){
-      const t = i / samples;
-      const sx = e[0] + (e[2]-e[0])*t;
-      const sy = e[1] + (e[3]-e[1])*t;
-      if(sx >= rx && sx <= rx+rw && sy >= ry && sy <= ry+rh) return true;
-    }
-  }
-  return false;
-}
-
-// Game over handler
-function gameOver(){
-  if(state.gameOver) return;
-  state.gameOver = true;
-  state.paused = true;
-  beep(120, 0.18, 0.12, 'sawtooth');
-  spawnCrashParticles(player.x + player.w*0.5, player.y + player.h*0.5);
-  if(state.score > state.high){ state.high = state.score; localStorage.setItem('gd_high', String(state.high)); highEl.textContent = state.high; }
-}
-
-// Checkpoint functions for practice mode
-function captureCheckpoint(){
-  state.checkpointState = {
-    obstacles: JSON.parse(JSON.stringify(state.obstacles)),
-    distance: state.distance,
-    score: state.score,
-    speedMult: state.speedMult
+  let obs = {
+    x: canvas.width + 50,
+    y: 330,
+    w: 50, h:50,
+    type: type,
+    color: color
   };
-  state.checkpointX = player.x;
-}
-function respawnToCheckpoint(){
-  if(!state.checkpointState) return restart();
-  state.obstacles = JSON.parse(JSON.stringify(state.checkpointState.obstacles));
-  state.distance = state.checkpointState.distance;
-  state.score = state.checkpointState.score;
-  state.speedMult = state.checkpointState.speedMult;
-  resetPlayer();
-  state.gameOver = false;
-  state.paused = false;
-  beep(300,0.08,0.08);
-  requestAnimationFrame(loop);
+
+  if (type === "tallblock") obs.h = 120;
+  if (type === "upsidedown") obs.y = 280;
+  if (type === "quad") { obs.w = 40; obs.h = 40; obs.quad = true; }
+  
+  obstacles.push(obs);
 }
 
-// Start / pause / restart
-function startGame(){
-  state.running = true;
-  state.paused = false;
-  state.gameOver = false;
-  resetPlayer();
-  state.obstacles = [];
-  state.particles = [];
-  state.spawnTimer = 0;
-  state.speedMult = 1;
-  state.distance = 0;
-  state.score = 0;
-  if(state.practice) captureCheckpoint();
-  state.lastTime = performance.now();
-  requestAnimationFrame(loop);
-}
-function togglePause(){ state.paused = !state.paused; if(!state.paused){ state.lastTime = performance.now(); requestAnimationFrame(loop); } }
-function restart(){
-  // if in practice and checkpoint exists, respawn to checkpoint
-  if(state.practice && state.checkpointState){ respawnToCheckpoint(); return; }
-  startGame();
+function spawnLoop() {
+  if(onMenu) return;
+  spawnObstacle();
+  setTimeout(spawnLoop, 900 - level * 120);
 }
 
-// Rendering helpers
-function drawRoundedRect(x,y,w,h,r,fill=true){
+// Random pick
+function randomChoice(arr){
+  return arr[Math.floor(Math.random()*arr.length)];
+}
+
+// Draw spike obstacle
+function drawSpike(o) {
+  ctx.fillStyle = o.color;
   ctx.beginPath();
-  ctx.moveTo(x+r,y);
-  ctx.arcTo(x+w,y,x+w,y+h,r);
-  ctx.arcTo(x+w,y+h,x,y+h,r);
-  ctx.arcTo(x,y+h,x,y,r);
-  ctx.arcTo(x,y,x+w,y,r);
-  ctx.closePath();
-  if(fill) ctx.fill();
-}
-
-// Parallax hills
-function drawHills(){
-  const base = canvas.height - groundHeight();
-  ctx.fillStyle = 'rgba(6,182,212,0.04)';
-  ctx.beginPath();
-  ctx.moveTo(0,canvas.height);
-  for(let i=0;i<=canvas.width;i+=60){
-    const peak = base - Math.sin((i/200) + (state.distance*0.01)) * 22 - 10;
-    ctx.lineTo(i, peak);
-  }
-  ctx.lineTo(canvas.width, canvas.height);
+  ctx.moveTo(o.x, o.y + o.h);
+  ctx.lineTo(o.x + o.w/2, o.y);
+  ctx.lineTo(o.x + o.w, o.y + o.h);
   ctx.closePath();
   ctx.fill();
 }
 
-// Main loop
-function loop(now){
-  if(state.paused || !state.running) return;
-  const dt = Math.min(40, now - state.lastTime);
-  state.lastTime = now;
-
-  // difficulty ramp
-  state.speedMult += dt * 0.00003;
-  const speed = state.speedBase * state.speedMult;
-
-  // spawn obstacles well ahead for telegraphing
-  state.spawnTimer += dt;
-  const interval = Math.max(420, state.spawnInterval / (1 + (state.speedMult - 1) * 0.8));
-  if(state.spawnTimer > interval){
-    state.spawnTimer = 0;
-    spawnAhead();
-  }
-
-  // update obstacles
-  for(let i = state.obstacles.length - 1; i >= 0; i--){
-    const ob = state.obstacles[i];
-    // special motion for flying obstacles
-    if(ob.type === 'fly'){
-      ob.y = ob.baseY + Math.sin((state.distance + ob.x) * 0.028) * ob.amp;
-    }
-    ob.x -= speed * (dt / 16.6);
-    if(ob.x + ob.w < -200) state.obstacles.splice(i,1);
-  }
-
-  // update player physics
-  player.vy += state.gravity;
-  player.y += player.vy;
-  const gy = canvas.height - groundHeight() - player.h;
-  if(player.y >= gy){ player.y = gy; player.vy = 0; player.grounded = true; } else player.grounded = false;
-
-  // rotate while airborne
-  if(!player.grounded) player.rotation += player.vy * 0.012;
-  else player.rotation *= 0.7;
-
-  // collisions
-  for(const ob of state.obstacles){
-    if(ob.type === 'spike'){
-      // triangle points: left-bottom (ax), apex (bx), right-bottom (cx)
-      const ax = ob.x, ay = ob.y + ob.h;
-      const bx = ob.x + ob.w*0.5, by = ob.y;
-      const cx = ob.x + ob.w, cy = ob.y + ob.h;
-      if(rectIntersectsTriangle(player.x, player.y, player.w, player.h, ax,ay,bx,by,cx,cy)){
-        gameOver();
-      }
-    } else {
-      // rectangular obstacles
-      if(!(player.x + player.w <= ob.x || player.x >= ob.x + ob.w || player.y + player.h <= ob.y || player.y >= ob.y + ob.h)){
-        gameOver();
-      }
-    }
-  }
-
-  // particles update
-  for(let i=state.particles.length-1;i>=0;i--){
-    const p = state.particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vy += 0.25;
-    p.life--;
-    if(p.life<=0) state.particles.splice(i,1);
-  }
-
-  // scoring & distance
-  state.distance += speed * (dt / 16.6);
-  const dist = Math.floor(state.distance * 0.22);
-  state.score = dist;
-  scoreEl.textContent = state.score;
-  distEl.textContent = dist;
-  speedEl.textContent = state.speedMult.toFixed(2) + 'x';
-
-  render();
-
-  if(!state.paused) requestAnimationFrame(loop);
+function drawUpsideDownSpike(o) {
+  ctx.fillStyle = o.color;
+  ctx.beginPath();
+  ctx.moveTo(o.x, o.y);
+  ctx.lineTo(o.x + o.w/2, o.y + o.h);
+  ctx.lineTo(o.x + o.w, o.y);
+  ctx.closePath();
+  ctx.fill();
 }
 
-// Rendering
-function render(){
-  // clear
-  ctx.fillStyle = 'linear-gradient(180deg,#071426,#061025)'; // fallback: will draw below with gradient
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+// Main update loop
+function update() {
+  if(onMenu) return;
 
-  // nice sky gradient
-  const g = ctx.createLinearGradient(0,0,0,canvas.height);
-  g.addColorStop(0,'#071426');
-  g.addColorStop(1,'#051023');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // Background gradient
+  bgShift += 0.005;
+  let col1 = levelColors[level][Math.floor(bgShift % levelColors[level].length)];
+  let col2 = levelColors[level][Math.floor((bgShift+1) % levelColors[level].length)];
+  let g = ctx.createLinearGradient(0,0,900,450);
+  g.addColorStop(0,col1);
+  g.addColorStop(1,col2);
   ctx.fillStyle = g;
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillRect(0,0,900,450);
 
-  drawHills();
+  // Ground
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.fillRect(0,380,900,80);
 
-  // ground
-  const gh = groundHeight();
-  ctx.fillStyle = '#08121a';
-  ctx.fillRect(0, canvas.height - gh, canvas.width, gh);
-
-  // ground glow line
-  ctx.fillStyle = 'rgba(0,212,255,0.06)';
-  ctx.fillRect(0, canvas.height - gh - 6, canvas.width, 8);
-
-  // telegraph shadows for obstacles further ahead
-  for(const ob of state.obstacles){
-    // soft shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.12)';
-    ctx.fillRect(Math.round(ob.x), Math.round(ob.y + ob.h + 8), Math.round(ob.w), 6);
-    // small vertical indicator if it's far (help reading)
-    if(ob.x > canvas.width - state.telegraph + 40){
-      ctx.fillStyle = 'rgba(255,80,80,0.06)';
-      ctx.fillRect(ob.x - 2, ob.y - 26, 4, 18);
-    }
+  // Bounce jump
+  if(player.holding && player.y >= 330){
+    player.vy = player.jump;
   }
 
-  // draw obstacles
-  for(const ob of state.obstacles){
-    if(ob.type === 'spike'){
-      drawSpike(ob);
-    } else {
-      // block / tall / fly - rectangular with highlight
-      ctx.fillStyle = '#ff4f68';
-      ctx.fillRect(Math.round(ob.x), Math.round(ob.y), Math.round(ob.w), Math.round(ob.h));
-      ctx.fillStyle = 'rgba(255,255,255,0.06)';
-      ctx.fillRect(Math.round(ob.x + ob.w - Math.min(12, ob.w)), Math.round(ob.y), Math.min(12, ob.w), Math.round(ob.h));
-    }
+  // Gravity
+  player.vy += player.gravity;
+  player.y += player.vy;
+
+  // Ground collision
+  if(player.y > 330){
+    player.y = 330;
+    player.vy = 0;
   }
 
-  // player
+  // Draw player (rotating cube)
   ctx.save();
-  ctx.translate(player.x + player.w/2, player.y + player.h/2);
-  ctx.rotate(player.rotation);
-  ctx.fillStyle = player.color;
-  // rounded square
-  roundRect(-player.w/2, -player.h/2, player.w, player.h, Math.max(4, Math.round(player.w*0.12)));
+  ctx.translate(player.x+player.w/2, player.y+player.h/2);
+  if(!player.holding) ctx.rotate(player.vy/10);
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(-player.w/2, -player.h/2, player.w, player.h);
   ctx.restore();
 
-  // particles
-  for(const p of state.particles){
-    ctx.fillStyle = p.col;
-    ctx.fillRect(p.x, p.y, p.size, p.size);
+  // Move & draw obstacles
+  for(let o of obstacles){
+    o.x -= speed;
+
+    if(o.type==="spike") drawSpike(o);
+    else if(o.type==="upsidedown") drawUpsideDownSpike(o);
+    else if(o.type==="double"){
+      drawSpike(o);
+      ctx.save();
+      ctx.translate(0,-50);
+      drawSpike(o);
+      ctx.restore();
+    }
+    else if(o.type==="block"||o.type==="tallblock"){
+      ctx.fillStyle = o.color;
+      ctx.fillRect(o.x,o.y,o.w,o.h);
+    }
+    else if(o.type==="quad"){
+      for(let i=0;i<4;i++){
+        ctx.fillStyle = levelColors[level][i % levelColors[level].length];
+        ctx.fillRect(o.x + (i%2)*40, o.y - Math.floor(i/2)*40, 40, 40);
+      }
+    }
+
+    // Collision
+    if(player.x < o.x + o.w &&
+       player.x + player.w > o.x &&
+       player.y < o.y + o.h &&
+       player.y + player.h > o.y){
+         location.reload();
+       }
   }
 
-  // HUD small overlay on canvas
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.fillRect(12,12,230,56);
-  ctx.fillStyle = '#fff';
-  ctx.font = `700 ${14 + Math.round(canvas.width*0.008)}px system-ui, Arial`;
-  ctx.fillText(`Score: ${state.score}`, 24, 36);
-  ctx.font = `${12 + Math.round(canvas.width*0.006)}px system-ui, Arial`;
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.fillText(`High: ${state.high}`, 24, 56);
-
-  // Game Over overlay
-  if(state.gameOver){
-    ctx.fillStyle = 'rgba(1,3,6,0.6)';
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.font = `800 ${36 + Math.round(canvas.width*0.01)}px system-ui, Arial`;
-    ctx.fillText('You Crashed', canvas.width/2, canvas.height/2 - 12);
-    ctx.font = `600 ${16 + Math.round(canvas.width*0.006)}px system-ui, Arial`;
-    ctx.fillStyle = '#d7eef9';
-    ctx.fillText(`Score: ${state.score}  •  High: ${state.high}`, canvas.width/2, canvas.height/2 + 28);
-    ctx.font = `500 ${14 + Math.round(canvas.width*0.005)}px system-ui, Arial`;
-    ctx.fillStyle = '#9fb2c8';
-    ctx.fillText(state.practice ? 'Tap to respawn at checkpoint' : 'Press R to restart', canvas.width/2, canvas.height/2 + 66);
-    ctx.textAlign = 'start';
-  }
+  requestAnimationFrame(update);
 }
-
-// draw spike triangle with a little bevel/highlight
-function drawSpike(ob){
-  const x = ob.x, y = ob.y, w = ob.w, h = ob.h;
-  // base fill
-  ctx.fillStyle = '#ff3b5c';
-  ctx.beginPath();
-  ctx.moveTo(x, y+h);
-  ctx.lineTo(x + w*0.5, y);
-  ctx.lineTo(x + w, y+h);
-  ctx.closePath();
-  ctx.fill();
-  // highlight (thin)
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
-  ctx.beginPath();
-  ctx.moveTo(x + w*0.6, y + h*0.06);
-  ctx.lineTo(x + w*0.5, y + h*0.28);
-  ctx.lineTo(x + w*0.4, y + h*0.06);
-  ctx.closePath();
-  ctx.fill();
-  // base shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.12)';
-  ctx.fillRect(Math.round(x), Math.round(y + h + 8), Math.round(w), 6);
-}
-
-// roundRect helper
-function roundRect(x,y,w,h,r){
-  ctx.beginPath();
-  ctx.moveTo(x+r,y);
-  ctx.arcTo(x+w,y,x+w,y+h,r);
-  ctx.arcTo(x+w,y+h,x,y+h,r);
-  ctx.arcTo(x,y+h,x,y,r);
-  ctx.arcTo(x,y,x+w,y,r);
-  ctx.closePath();
-  ctx.fill();
-}
-
-// initial tiny intro animation: spawn a few obstacles offscreen to make it look alive
-(function seed(){
-  for(let i=0;i<3;i++){
-    spawnObstacleAt(canvas.width + i*220 + 180);
-  }
-})();
-
-// unlock audio on first gesture if required
-function unlockAudioOnce(){
-  ensureAudio();
-  if(!audioCtx) return;
-  if(audioCtx.state === 'suspended') audioCtx.resume();
-  window.removeEventListener('pointerdown', unlockAudioOnce);
-}
-window.addEventListener('pointerdown', unlockAudioOnce);
-
-// Score / HUD updates
-function uiLoop(){
-  scoreEl.textContent = state.score;
-  highEl.textContent = state.high;
-  distEl.textContent = Math.floor(state.distance * 0.22);
-  requestAnimationFrame(uiLoop);
-}
-uiLoop();
-
-// Kick off auto-play hint (Play button)
-playBtn.textContent = 'Play';
-playBtn.addEventListener('click', ()=>{ if(!state.running) startGame(); });
-
-// Start paused initially
-render();
-
 </script>
+
 </body>
 </html>
